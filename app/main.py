@@ -4,7 +4,7 @@ from fastapi import FastAPI
 
 from app.config import settings
 from app.database import engine, Base
-from app.routers import experiments, events
+from app.routers import experiments, events, feature_flags
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -20,6 +20,7 @@ app = FastAPI(
 # Include routers
 app.include_router(experiments.router)
 app.include_router(events.router)
+app.include_router(feature_flags.router)
 
 
 @app.get("/health")

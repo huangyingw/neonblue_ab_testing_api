@@ -8,6 +8,8 @@ A simplified experimentation platform API for managing A/B tests, user assignmen
 - Idempotent user-to-variant assignment
 - Event recording with flexible properties
 - Experiment results with statistical significance calculation
+- **Feature flags** with rollout percentages and user overrides
+- **In-memory caching** for improved performance
 - Bearer token authentication
 - Docker deployment support
 
@@ -75,6 +77,19 @@ Default tokens: `test-token-123`, `test-token-456`
 | POST | `/events` | Record an event |
 | GET | `/events` | List events with filters |
 
+### Feature Flags
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/flags` | Create a feature flag |
+| GET | `/flags` | List all feature flags |
+| GET | `/flags/{key}` | Get flag by key |
+| PATCH | `/flags/{key}` | Update flag |
+| DELETE | `/flags/{key}` | Delete flag |
+| GET | `/flags/{key}/evaluate/{user_id}` | Evaluate flag for user |
+| POST | `/flags/{key}/overrides` | Create user override |
+| DELETE | `/flags/{key}/overrides/{user_id}` | Delete user override |
+
 ## Example Usage
 
 ### Create an Experiment
@@ -130,6 +145,27 @@ curl "http://localhost:8000/experiments/1/results?event_type=purchase" \
   -H "Authorization: Bearer test-token-123"
 ```
 
+### Create a Feature Flag
+
+```bash
+curl -X POST http://localhost:8000/flags \
+  -H "Authorization: Bearer test-token-123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "key": "dark-mode",
+    "name": "Dark Mode",
+    "enabled": false,
+    "rollout_percentage": 25
+  }'
+```
+
+### Evaluate Feature Flag for User
+
+```bash
+curl http://localhost:8000/flags/dark-mode/evaluate/user123 \
+  -H "Authorization: Bearer test-token-123"
+```
+
 ## Running Tests
 
 ```bash
@@ -152,12 +188,14 @@ Run the interactive demo to see all endpoints in action:
 │   ├── main.py           # FastAPI application
 │   ├── config.py         # Configuration settings
 │   ├── auth.py           # Authentication middleware
+│   ├── cache.py          # In-memory cache with TTL
 │   ├── database.py       # Database connection
 │   ├── models.py         # SQLAlchemy models
 │   ├── schemas.py        # Pydantic schemas
 │   └── routers/
 │       ├── experiments.py
-│       └── events.py
+│       ├── events.py
+│       └── feature_flags.py
 ├── tests/
 │   └── test_api.py
 ├── examples/

@@ -149,3 +149,56 @@ class ExperimentResults(BaseModel):
     variants: list[VariantMetrics]
     statistical_significance: Optional[StatisticalSignificance] = None
     time_range: Optional[dict[str, datetime]] = None
+
+
+# --- Feature Flag Schemas ---
+
+
+class FeatureFlagCreate(BaseModel):
+    """Schema for creating a feature flag."""
+
+    key: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9_-]+$")
+    name: str = Field(..., min_length=1, max_length=200)
+    description: Optional[str] = None
+    enabled: bool = False
+    rollout_percentage: float = Field(default=0, ge=0, le=100)
+
+
+class FeatureFlagUpdate(BaseModel):
+    """Schema for updating a feature flag."""
+
+    name: Optional[str] = None
+    description: Optional[str] = None
+    enabled: Optional[bool] = None
+    rollout_percentage: Optional[float] = Field(default=None, ge=0, le=100)
+
+
+class FeatureFlagResponse(BaseModel):
+    """Schema for feature flag response."""
+
+    id: int
+    key: str
+    name: str
+    description: Optional[str]
+    enabled: bool
+    rollout_percentage: float
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FeatureFlagEvaluation(BaseModel):
+    """Schema for feature flag evaluation result."""
+
+    key: str
+    enabled: bool
+    reason: str  # "global", "rollout", "user_override", "disabled"
+
+
+class FeatureFlagOverrideCreate(BaseModel):
+    """Schema for creating a user override."""
+
+    user_id: str = Field(..., min_length=1, max_length=100)
+    enabled: bool

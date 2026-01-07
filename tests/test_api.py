@@ -282,3 +282,173 @@ class TestResults:
         data = response.json()
         assert data["total_users"] == 10
         assert len(data["variants"]) == 2
+
+
+class TestFeatureFlags:
+    """Tests for feature flag endpoints."""
+
+    def test_create_feature_flag(self):
+        response = client.post(
+            "/flags",
+            json={
+                "key": "new-feature",
+                "name": "New Feature",
+                "description": "A new feature flag",
+                "enabled": False,
+                "rollout_percentage": 0,
+            },
+            headers=AUTH_HEADER,
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["key"] == "new-feature"
+        assert data["enabled"] is False
+
+    def test_create_duplicate_flag(self):
+        # Create first flag
+        client.post(
+            "/flags",
+            json={"key": "duplicate-flag", "name": "Test"},
+            headers=AUTH_HEADER,
+        )
+        # Try to create duplicate
+        response = client.post(
+            "/flags",
+            json={"key": "duplicate-flag", "name": "Test 2"},
+            headers=AUTH_HEADER,
+        )
+        assert response.status_code == 409
+
+    def test_list_feature_flags(self):
+        # Create some flags
+        for i in range(3):
+            client.post(
+                "/flags",
+                json={"key": f"list-flag-{i}", "name": f"Flag {i}"},
+                headers=AUTH_HEADER,
+            )
+
+        response = client.get("/flags", headers=AUTH_HEADER)
+        assert response.status_code == 200
+        assert len(response.json()) >= 3
+
+    def test_update_feature_flag(self):
+        # Create flag
+        client.post(
+            "/flags",
+            json={"key": "update-flag", "name": "Original"},
+            headers=AUTH_HEADER,
+        )
+
+        # Update flag
+        response = client.patch(
+            "/flags/update-flag",
+            json={"enabled": True, "rollout_percentage": 50},
+            headers=AUTH_HEADER,
+        )
+        assert response.status_code == 200
+        assert response.json()["enabled"] is True
+        assert response.json()["rollout_percentage"] == 50
+
+    def test_evaluate_flag_disabled(self):
+        # Create disabled flag
+        client.post(
+            "/flags",
+            json={"key": "disabled-flag", "name": "Disabled", "enabled": False},
+            headers=AUTH_HEADER,
+        )
+
+        response = client.get("/flags/disabled-flag/evaluate/user123", headers=AUTH_HEADER)
+        assert response.status_code == 200
+        assert response.json()["enabled"] is False
+        assert response.json()["reason"] == "disabled"
+
+    def test_evaluate_flag_enabled(self):
+        # Create enabled flag
+        client.post(
+            "/flags",
+            json={"key": "enabled-flag", "name": "Enabled", "enabled": True},
+            headers=AUTH_HEADER,
+        )
+
+        response = client.get("/flags/enabled-flag/evaluate/user123", headers=AUTH_HEADER)
+        assert response.status_code == 200
+        assert response.json()["enabled"] is True
+        assert response.json()["reason"] == "global"
+
+    def test_evaluate_flag_with_override(self):
+        # Create disabled flag
+        client.post(
+            "/flags",
+            json={"key": "override-flag", "name": "Override Test", "enabled": False},
+            headers=AUTH_HEADER,
+        )
+
+        # Create user override
+        client.post(
+            "/flags/override-flag/overrides",
+            json={"user_id": "special-user", "enabled": True},
+            headers=AUTH_HEADER,
+        )
+
+        # Evaluate for special user
+        response = client.get("/flags/override-flag/evaluate/special-user", headers=AUTH_HEADER)
+        assert response.status_code == 200
+        assert response.json()["enabled"] is True
+        assert response.json()["reason"] == "user_override"
+
+        # Evaluate for other user
+        response = client.get("/flags/override-flag/evaluate/other-user", headers=AUTH_HEADER)
+        assert response.status_code == 200
+        assert response.json()["enabled"] is False
+
+    def test_delete_feature_flag(self):
+        # Create flag
+        client.post(
+            "/flags",
+            json={"key": "delete-flag", "name": "To Delete"},
+            headers=AUTH_HEADER,
+        )
+
+        # Delete flag
+        response = client.delete("/flags/delete-flag", headers=AUTH_HEADER)
+        assert response.status_code == 204
+
+        # Verify deleted
+        response = client.get("/flags/delete-flag", headers=AUTH_HEADER)
+        assert response.status_code == 404
+
+
+class TestCache:
+    """Tests for caching functionality."""
+
+    def test_assignment_caching(self):
+        # Create experiment
+        create_response = client.post(
+            "/experiments",
+            json={
+                "name": "Cache Test",
+                "variants": [
+                    {"name": "A", "traffic_percentage": 50},
+                    {"name": "B", "traffic_percentage": 50},
+                ],
+            },
+            headers=AUTH_HEADER,
+        )
+        experiment_id = create_response.json()["id"]
+
+        # First request - creates assignment
+        response1 = client.get(
+            f"/experiments/{experiment_id}/assignment/cache-user",
+            headers=AUTH_HEADER,
+        )
+        assert response1.status_code == 200
+        variant1 = response1.json()["variant_name"]
+
+        # Subsequent requests should return cached result
+        for _ in range(10):
+            response = client.get(
+                f"/experiments/{experiment_id}/assignment/cache-user",
+                headers=AUTH_HEADER,
+            )
+            assert response.json()["variant_name"] == variant1

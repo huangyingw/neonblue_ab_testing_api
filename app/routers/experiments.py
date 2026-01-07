@@ -21,6 +21,7 @@ from app.schemas import (
     VariantMetrics,
     StatisticalSignificance,
 )
+from app.cache import cache, CACHE_KEY_ASSIGNMENT
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
 
@@ -116,7 +117,15 @@ def get_assignment(
 
     This endpoint is idempotent: once a user is assigned to a variant,
     subsequent calls will return the same assignment.
+
+    Results are cached for improved performance.
     """
+    # Try cache first
+    cache_key = CACHE_KEY_ASSIGNMENT.format(experiment_id=experiment_id, user_id=user_id)
+    cached_result = cache.get(cache_key)
+    if cached_result:
+        return cached_result
+
     # Check if experiment exists
     experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if not experiment:
@@ -133,13 +142,15 @@ def get_assignment(
     )
 
     if existing_assignment:
-        return AssignmentResponse(
+        response = AssignmentResponse(
             experiment_id=existing_assignment.experiment_id,
             variant_id=existing_assignment.variant_id,
             variant_name=existing_assignment.variant.name,
             user_id=existing_assignment.user_id,
             assigned_at=existing_assignment.assigned_at,
         )
+        cache.set(cache_key, response, ttl=300)  # Cache for 5 minutes
+        return response
 
     # Assign user to a variant based on traffic percentages
     variants = db.query(Variant).filter(Variant.experiment_id == experiment_id).all()
@@ -171,13 +182,15 @@ def get_assignment(
     db.commit()
     db.refresh(assignment)
 
-    return AssignmentResponse(
+    response = AssignmentResponse(
         experiment_id=assignment.experiment_id,
         variant_id=assignment.variant_id,
         variant_name=selected_variant.name,
         user_id=assignment.user_id,
         assigned_at=assignment.assigned_at,
     )
+    cache.set(cache_key, response, ttl=300)  # Cache for 5 minutes
+    return response
 
 
 @router.get("/{experiment_id}/results", response_model=ExperimentResults)
