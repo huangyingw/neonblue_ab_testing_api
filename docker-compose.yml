@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=sqlite:///./data/ab_testing.db
+      - API_TOKENS=["test-token-123","test-token-456"]
+    restart: unless-stopped
