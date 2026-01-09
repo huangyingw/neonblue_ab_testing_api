@@ -72,8 +72,8 @@ class ExperimentUpdate(BaseModel):
     @classmethod
     def validate_status(cls, v: Optional[str]) -> Optional[str]:
         """Validate status value."""
-        if v is not None and v not in ["draft", "running", "stopped"]:
-            raise ValueError("Status must be one of: draft, running, stopped")
+        if v is not None and v not in ["draft", "running", "stopped", "completed"]:
+            raise ValueError("Status must be one of: draft, running, stopped, completed")
         return v
 
 

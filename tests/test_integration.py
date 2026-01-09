@@ -392,3 +392,175 @@ class TestConcurrency:
 
         # All results should be identical (idempotency)
         assert len(set(results)) == 1
+
+
+class TestEventFiltering:
+    """Integration tests for event filtering and pagination."""
+
+    def test_event_filtering_by_user_id(self, client, wait_for_api):
+        # Create events for multiple users
+        for i in range(5):
+            client.post(
+                "/events",
+                headers=AUTH_HEADER,
+                json={"user_id": f"filter_user_{i}", "event_type": "action"},
+            )
+
+        # Filter by specific user
+        response = client.get(
+            "/events",
+            headers=AUTH_HEADER,
+            params={"user_id": "filter_user_2"},
+        )
+        assert response.status_code == 200
+        events = response.json()
+        assert all(e["user_id"] == "filter_user_2" for e in events)
+
+    def test_event_pagination(self, client, wait_for_api):
+        # Create multiple events
+        for i in range(15):
+            client.post(
+                "/events",
+                headers=AUTH_HEADER,
+                json={"user_id": f"page_user_{i}", "event_type": "page_test"},
+            )
+
+        # Get first page
+        response1 = client.get(
+            "/events",
+            headers=AUTH_HEADER,
+            params={"event_type": "page_test", "limit": 5, "offset": 0},
+        )
+        assert response1.status_code == 200
+        assert len(response1.json()) == 5
+
+        # Get second page
+        response2 = client.get(
+            "/events",
+            headers=AUTH_HEADER,
+            params={"event_type": "page_test", "limit": 5, "offset": 5},
+        )
+        assert response2.status_code == 200
+        assert len(response2.json()) == 5
+
+
+class TestExperimentStatus:
+    """Integration tests for experiment status management."""
+
+    def test_experiment_lifecycle(self, client, wait_for_api):
+        """Test experiment status transitions: draft -> running -> completed."""
+        # Create experiment (starts as draft)
+        create_response = client.post(
+            "/experiments",
+            headers=AUTH_HEADER,
+            json={
+                "name": "Lifecycle Test",
+                "variants": [
+                    {"name": "A", "traffic_percentage": 50},
+                    {"name": "B", "traffic_percentage": 50},
+                ],
+            },
+        )
+        assert create_response.status_code == 201
+        experiment_id = create_response.json()["id"]
+        assert create_response.json()["status"] == "draft"
+
+        # Start experiment
+        update_response = client.patch(
+            f"/experiments/{experiment_id}",
+            headers=AUTH_HEADER,
+            json={"status": "running"},
+        )
+        assert update_response.status_code == 200
+        assert update_response.json()["status"] == "running"
+
+        # Complete experiment
+        complete_response = client.patch(
+            f"/experiments/{experiment_id}",
+            headers=AUTH_HEADER,
+            json={"status": "completed"},
+        )
+        assert complete_response.status_code == 200
+        assert complete_response.json()["status"] == "completed"
+
+
+class TestResultsStatistics:
+    """Integration tests for experiment results with statistics."""
+
+    def test_results_with_events_by_type(self, client, wait_for_api):
+        """Test that results correctly group events by type."""
+        # Create experiment
+        create_response = client.post(
+            "/experiments",
+            headers=AUTH_HEADER,
+            json={
+                "name": "Stats Test",
+                "variants": [
+                    {"name": "Control", "traffic_percentage": 50},
+                    {"name": "Treatment", "traffic_percentage": 50},
+                ],
+            },
+        )
+        experiment_id = create_response.json()["id"]
+
+        # Assign users and record various events
+        for i in range(10):
+            user_id = f"stats_user_{i}"
+            client.get(
+                f"/experiments/{experiment_id}/assignment/{user_id}",
+                headers=AUTH_HEADER,
+            )
+
+            # Record different event types
+            client.post(
+                "/events",
+                headers=AUTH_HEADER,
+                json={"user_id": user_id, "event_type": "view"},
+            )
+            if i < 5:
+                client.post(
+                    "/events",
+                    headers=AUTH_HEADER,
+                    json={"user_id": user_id, "event_type": "click"},
+                )
+            if i < 2:
+                client.post(
+                    "/events",
+                    headers=AUTH_HEADER,
+                    json={"user_id": user_id, "event_type": "purchase"},
+                )
+
+        # Get results
+        response = client.get(
+            f"/experiments/{experiment_id}/results",
+            headers=AUTH_HEADER,
+        )
+        assert response.status_code == 200
+        results = response.json()
+        assert results["total_users"] == 10
+        assert results["total_events"] > 0
+
+        # Check that variants have events_by_type breakdown
+        for variant in results["variants"]:
+            assert "events_by_type" in variant
+
+
+class TestMultiTokenAuth:
+    """Integration tests for multiple token authentication."""
+
+    def test_multiple_valid_tokens(self, client, wait_for_api):
+        """Test that both configured tokens work."""
+        # Test with first token
+        response1 = client.get(
+            "/experiments/1",
+            headers={"Authorization": "Bearer test-token-123"},
+        )
+        # 404 is expected (no experiment with id 1), but not 401
+        assert response1.status_code in [200, 404]
+
+        # Test with second token
+        response2 = client.get(
+            "/experiments/1",
+            headers={"Authorization": "Bearer test-token-456"},
+        )
+        assert response2.status_code in [200, 404]

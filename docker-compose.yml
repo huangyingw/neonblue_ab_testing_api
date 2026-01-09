@@ -42,7 +42,7 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./test.db
       - API_TOKENS=["test-token-123","test-token-456"]
-    command: pytest tests/test_api.py -v
+    command: pytest tests/test_api.py tests/test_cache.py -v --cov=app --cov-report=term-missing --cov-report=html:coverage_report
     profiles:
       - test
 
