@@ -33,7 +33,7 @@ services:
     profiles:
       - dev
 
-  # Test runner service
+  # Unit test runner (isolated, no server needed)
   test:
     build: .
     volumes:
@@ -42,6 +42,35 @@ services:
     environment:
       - DATABASE_URL=sqlite:///./test.db
       - API_TOKENS=["test-token-123","test-token-456"]
-    command: pytest tests/ -v
+    command: pytest tests/test_api.py -v
     profiles:
       - test
+
+  # Integration test API server
+  api-test:
+    build: .
+    environment:
+      - DATABASE_URL=sqlite:///./integration_test.db
+      - API_TOKENS=["test-token-123","test-token-456"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles:
+      - integration
+
+  # Integration test runner (connects to api-test)
+  integration:
+    build: .
+    volumes:
+      - ./tests:/app/tests
+    environment:
+      - API_BASE_URL=http://api-test:8000
+      - API_TOKENS=["test-token-123","test-token-456"]
+    command: pytest tests/test_integration.py -v --tb=short
+    depends_on:
+      api-test:
+        condition: service_healthy
+    profiles:
+      - integration
