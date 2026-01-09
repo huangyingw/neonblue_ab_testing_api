@@ -22,8 +22,11 @@ docker-compose up --build
 # Development mode (with hot reload)
 docker-compose --profile dev up --build dev
 
-# Run tests
+# Run unit tests
 docker-compose --profile test run --rm test
+
+# Run integration tests (starts API server and runs tests against it)
+docker-compose --profile integration up --abort-on-container-exit
 ```
 
 The API will be available at `http://localhost:8000`.
@@ -154,9 +157,28 @@ curl http://localhost:8000/flags/dark-mode/evaluate/user123 \
 
 ## Running Tests
 
+All tests run in Docker containers - no local Python environment needed.
+
 ```bash
-pytest tests/ -v
+# Unit tests (fast, isolated)
+docker-compose --profile test run --rm test
+
+# Integration tests (starts API server, runs end-to-end tests)
+docker-compose --profile integration up --abort-on-container-exit
+
+# Clean up containers after testing
+docker-compose --profile integration down
 ```
+
+**Unit tests (23 tests):** Test individual components in isolation.
+
+**Integration tests (11 tests):** Test complete workflows against a live API server:
+- Health check endpoint
+- Authentication (missing/invalid/valid tokens)
+- Full experiment workflow (create → assign → events → results)
+- Full feature flag workflow (CRUD, evaluation, overrides)
+- Edge cases and error handling
+- Concurrent access and idempotency
 
 ## Demo Script
 
@@ -183,7 +205,8 @@ Run the interactive demo to see all endpoints in action:
 │       ├── events.py
 │       └── feature_flags.py
 ├── tests/
-│   └── test_api.py
+│   ├── test_api.py           # Unit tests
+│   └── test_integration.py   # Integration tests
 ├── examples/
 │   └── demo.sh
 ├── Dockerfile
