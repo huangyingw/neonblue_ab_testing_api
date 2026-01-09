@@ -1,80 +1,77 @@
 @startuml System Architecture
 
-!define RECTANGLE class
-
-skinparam componentStyle rectangle
 skinparam backgroundColor white
-skinparam component {
-    BackgroundColor LightBlue
-    BorderColor DarkBlue
-}
+skinparam defaultFontSize 12
 
-title A/B Testing API - System Architecture
+title A/B Testing API - System Architecture (Simplified)
 
-package "Client Layer" {
-    [Web Application] as WebApp
-    [Mobile App] as MobileApp
-    [CLI / Scripts] as CLI
-}
+' ===== Clients =====
+actor "Web App" as Web
+actor "Mobile App" as Mobile
+actor "CLI/Scripts" as CLI
 
-package "API Layer" {
-    [FastAPI Application] as API
+' ===== API Layer =====
+rectangle "Docker Container" as Docker #LightBlue {
 
-    package "Routers" {
-        [Experiments Router] as ExpRouter
-        [Events Router] as EventRouter
-        [Feature Flags Router] as FlagRouter
+    rectangle "FastAPI Application" as API #LightGreen {
+
+        rectangle "Authentication" as AuthLayer #LightYellow {
+            [Bearer Token\nValidation] as Auth
+        }
+
+        rectangle "API Endpoints" as Endpoints #LightCyan {
+            [/experiments] as Exp
+            [/events] as Event
+            [/flags] as Flags
+        }
+
+        rectangle "Caching" as CacheLayer #LightPink {
+            [In-Memory Cache\n(TTL: 1-5 min)] as Cache
+        }
     }
 
-    package "Middleware" {
-        [Auth Middleware] as Auth
-        [Error Handler] as ErrorHandler
-    }
-}
-
-package "Service Layer" {
-    [Cache Service] as Cache
-    [Assignment Service] as AssignSvc
-    [Statistics Service] as StatsSvc
-}
-
-package "Data Layer" {
-    database "SQLite Database" as DB {
+    database "SQLite" as DB #WhiteSmoke {
         [experiments]
         [variants]
         [assignments]
         [events]
         [feature_flags]
-        [feature_flag_overrides]
     }
 }
 
-package "Infrastructure" {
-    [Docker Container] as Docker
-    [uvicorn Server] as Uvicorn
-}
+' ===== Connections =====
+Web --> Auth : HTTPS
+Mobile --> Auth : HTTPS
+CLI --> Auth : HTTPS
 
-' Connections
-WebApp --> API : HTTPS
-MobileApp --> API : HTTPS
-CLI --> API : HTTPS
+Auth --> Exp
+Auth --> Event
+Auth --> Flags
 
-API --> Auth
-Auth --> ExpRouter
-Auth --> EventRouter
-Auth --> FlagRouter
+Exp --> Cache : read/write
+Flags --> Cache : read/write
 
-ExpRouter --> AssignSvc
-ExpRouter --> StatsSvc
-FlagRouter --> Cache
+Exp --> DB
+Event --> DB
+Flags --> DB
 
-AssignSvc --> Cache
-AssignSvc --> DB
-StatsSvc --> DB
-EventRouter --> DB
-FlagRouter --> DB
+' ===== Notes =====
+note bottom of Docker
+  **Running Command:**
+  docker-compose up
 
-Docker --> Uvicorn
-Uvicorn --> API
+  **Port:** 8000
+  **Docs:** /docs
+end note
+
+note right of Cache
+  **Cached Data:**
+  - User assignments
+  - Flag evaluations
+
+  **Purpose:**
+  Reduce DB queries
+  for frequent calls
+end note
 
 @enduml

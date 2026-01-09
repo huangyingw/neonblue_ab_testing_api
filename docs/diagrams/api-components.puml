@@ -1,99 +1,76 @@
 @startuml API Components
 
 skinparam backgroundColor white
-skinparam package {
-    BackgroundColor LightGreen
-    BorderColor DarkGreen
-}
-skinparam component {
-    BackgroundColor LightBlue
-    BorderColor DarkBlue
-}
+skinparam defaultFontSize 12
+skinparam rectangleBorderColor #333333
 
-title A/B Testing API - Component Diagram
+title A/B Testing API - Component Structure
 
-package "app" {
+rectangle "app/" as App #LightBlue {
 
-    component "main.py" as Main {
-        portin "FastAPI App" as AppPort
+    rectangle "Entry Point" as Entry #LightGreen {
+        [main.py] as Main
     }
 
-    package "routers" {
-        component "experiments.py" as ExpRouter {
-            port "POST /experiments" as PostExp
-            port "GET /experiments/{id}" as GetExp
-            port "PATCH /experiments/{id}" as PatchExp
-            port "GET /experiments/{id}/assignment/{user_id}" as GetAssign
-            port "GET /experiments/{id}/results" as GetResults
-        }
-
-        component "events.py" as EventRouter {
-            port "POST /events" as PostEvent
-            port "GET /events" as GetEvents
-        }
-
-        component "feature_flags.py" as FlagRouter {
-            port "POST /flags" as PostFlag
-            port "GET /flags" as GetFlags
-            port "GET /flags/{key}" as GetFlag
-            port "PATCH /flags/{key}" as PatchFlag
-            port "DELETE /flags/{key}" as DeleteFlag
-            port "GET /flags/{key}/evaluate/{user_id}" as EvalFlag
-            port "POST /flags/{key}/overrides" as PostOverride
-            port "DELETE /flags/{key}/overrides/{user_id}" as DeleteOverride
-        }
+    rectangle "API Routers" as Routers #LightYellow {
+        [experiments.py] as ExpR
+        [events.py] as EventR
+        [feature_flags.py] as FlagR
     }
 
-    component "auth.py" as Auth {
-        port "Bearer Token Validation" as AuthPort
+    rectangle "Core Services" as Services #LightPink {
+        [auth.py] as Auth
+        [cache.py] as Cache
     }
 
-    component "cache.py" as Cache {
-        port "In-Memory Cache" as CachePort
+    rectangle "Data Access" as Data #LightCyan {
+        [models.py] as Models
+        [schemas.py] as Schemas
+        [database.py] as DB
     }
 
-    component "models.py" as Models {
-        port "SQLAlchemy ORM" as ModelsPort
-    }
-
-    component "schemas.py" as Schemas {
-        port "Pydantic Validation" as SchemasPort
-    }
-
-    component "database.py" as Database {
-        port "DB Session" as DBPort
-    }
-
-    component "config.py" as Config {
-        port "Settings" as ConfigPort
+    rectangle "Configuration" as Config #LightGray {
+        [config.py] as Conf
     }
 }
 
-database "SQLite" as DB
+database "SQLite" as SQLite #WhiteSmoke
 
-Main --> ExpRouter
-Main --> EventRouter
-Main --> FlagRouter
+Main --> ExpR
+Main --> EventR
+Main --> FlagR
 
-ExpRouter --> Auth
-EventRouter --> Auth
-FlagRouter --> Auth
+ExpR --> Auth
+EventR --> Auth
+FlagR --> Auth
 
-ExpRouter --> Cache
-FlagRouter --> Cache
+ExpR --> Cache
+FlagR --> Cache
 
-ExpRouter --> Models
-EventRouter --> Models
-FlagRouter --> Models
+ExpR --> Models
+EventR --> Models
+FlagR --> Models
 
-ExpRouter --> Schemas
-EventRouter --> Schemas
-FlagRouter --> Schemas
+ExpR --> Schemas
+EventR --> Schemas
+FlagR --> Schemas
 
-Models --> Database
-Database --> DB
+Models --> DB
+DB --> SQLite
+DB --> Conf
+Auth --> Conf
 
-Auth --> Config
-Database --> Config
+note right of Routers
+  **Endpoints:**
+  /experiments/*
+  /events/*
+  /flags/*
+end note
+
+note right of Cache
+  In-memory TTL cache
+  for assignments and
+  flag evaluations
+end note
 
 @enduml
