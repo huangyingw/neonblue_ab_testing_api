@@ -1,0 +1,75 @@
+@startuml Deployment Architecture
+
+skinparam backgroundColor white
+skinparam node {
+    BackgroundColor LightSteelBlue
+    BorderColor DarkBlue
+}
+skinparam artifact {
+    BackgroundColor LightGoldenRodYellow
+    BorderColor DarkGoldenRod
+}
+
+title A/B Testing API - Deployment Architecture
+
+node "Development Machine" as Dev {
+    artifact "Source Code" as Source
+    artifact "docker-compose.yml" as Compose
+
+    node "Docker Engine" as DevDocker {
+        node "dev container" as DevContainer {
+            artifact "FastAPI App" as DevApp
+            artifact "uvicorn\n(--reload)" as DevUvicorn
+            database "SQLite\n(mounted)" as DevDB
+        }
+    }
+}
+
+node "Test Environment" as Test {
+    node "Docker Engine" as TestDocker {
+        node "test container" as TestContainer {
+            artifact "FastAPI App" as TestApp
+            artifact "pytest" as Pytest
+            database "SQLite\n(in-memory)" as TestDB
+        }
+    }
+}
+
+node "Production Environment" as Prod {
+    node "Docker Host" as ProdHost {
+        node "api container" as ProdContainer {
+            artifact "FastAPI App" as ProdApp
+            artifact "uvicorn\n(workers)" as ProdUvicorn
+        }
+    }
+
+    database "SQLite\n(volume)" as ProdDB
+
+    node "Future Scale" as Future {
+        artifact "PostgreSQL" as Postgres
+        artifact "Redis Cache" as Redis
+        artifact "Load Balancer" as LB
+    }
+}
+
+cloud "Internet" as Internet {
+    actor "API Clients" as Clients
+}
+
+Source --> DevDocker : docker-compose up --profile dev
+Source --> TestDocker : docker-compose up --profile test
+Source --> ProdHost : docker-compose up
+
+DevContainer --> DevDB : /app/data
+ProdContainer --> ProdDB : volume mount
+
+Clients --> ProdContainer : HTTPS:8000
+
+note right of Future
+  For production scale:
+  - Migrate SQLite → PostgreSQL
+  - Add Redis for distributed cache
+  - Add load balancer for horizontal scaling
+end note
+
+@enduml

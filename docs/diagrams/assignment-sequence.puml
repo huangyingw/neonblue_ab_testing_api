@@ -1,0 +1,66 @@
+@startuml Assignment Sequence
+
+skinparam backgroundColor white
+skinparam sequence {
+    ArrowColor DarkBlue
+    ActorBorderColor DarkBlue
+    LifeLineBorderColor DarkBlue
+    ParticipantBackgroundColor LightBlue
+    ParticipantBorderColor DarkBlue
+}
+
+title User Assignment Flow (Idempotent)
+
+actor Client
+participant "FastAPI" as API
+participant "Auth" as Auth
+participant "Cache" as Cache
+participant "Assignment\nService" as Service
+database "SQLite" as DB
+
+== First Request ==
+
+Client -> API : GET /experiments/{id}/assignment/{user_id}\n[Authorization: Bearer token]
+API -> Auth : Validate token
+Auth --> API : Token valid
+
+API -> Cache : Check cache\nkey: "assignment:{id}:{user_id}"
+Cache --> API : Cache miss
+
+API -> Service : Get or create assignment
+Service -> DB : Query existing assignment
+DB --> Service : Not found
+
+Service -> DB : Query variants for experiment
+DB --> Service : Variants list
+
+Service -> Service : Calculate weighted\nrandom selection
+
+Service -> DB : INSERT assignment
+DB --> Service : Assignment created
+
+Service -> Cache : Store in cache (TTL: 5min)
+Cache --> Service : Cached
+
+Service --> API : AssignmentResponse
+API --> Client : 200 OK\n{"variant_name": "Control", ...}
+
+== Subsequent Request (Same User) ==
+
+Client -> API : GET /experiments/{id}/assignment/{user_id}\n[Authorization: Bearer token]
+API -> Auth : Validate token
+Auth --> API : Token valid
+
+API -> Cache : Check cache\nkey: "assignment:{id}:{user_id}"
+Cache --> API : Cache hit!
+
+API --> Client : 200 OK\n{"variant_name": "Control", ...}\n(Same assignment - Idempotent)
+
+note right of Cache
+  Cache ensures fast
+  subsequent requests
+  and guarantees
+  idempotency
+end note
+
+@enduml

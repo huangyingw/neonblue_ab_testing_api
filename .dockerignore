@@ -6,7 +6,8 @@ __pycache__
 .env
 *.db
 data/
-tests/
 examples/
 *.md
 .claude/
+.venv/
+venv/

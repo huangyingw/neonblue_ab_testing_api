@@ -1,0 +1,99 @@
+@startuml API Components
+
+skinparam backgroundColor white
+skinparam package {
+    BackgroundColor LightGreen
+    BorderColor DarkGreen
+}
+skinparam component {
+    BackgroundColor LightBlue
+    BorderColor DarkBlue
+}
+
+title A/B Testing API - Component Diagram
+
+package "app" {
+
+    component "main.py" as Main {
+        portin "FastAPI App" as AppPort
+    }
+
+    package "routers" {
+        component "experiments.py" as ExpRouter {
+            port "POST /experiments" as PostExp
+            port "GET /experiments/{id}" as GetExp
+            port "PATCH /experiments/{id}" as PatchExp
+            port "GET /experiments/{id}/assignment/{user_id}" as GetAssign
+            port "GET /experiments/{id}/results" as GetResults
+        }
+
+        component "events.py" as EventRouter {
+            port "POST /events" as PostEvent
+            port "GET /events" as GetEvents
+        }
+
+        component "feature_flags.py" as FlagRouter {
+            port "POST /flags" as PostFlag
+            port "GET /flags" as GetFlags
+            port "GET /flags/{key}" as GetFlag
+            port "PATCH /flags/{key}" as PatchFlag
+            port "DELETE /flags/{key}" as DeleteFlag
+            port "GET /flags/{key}/evaluate/{user_id}" as EvalFlag
+            port "POST /flags/{key}/overrides" as PostOverride
+            port "DELETE /flags/{key}/overrides/{user_id}" as DeleteOverride
+        }
+    }
+
+    component "auth.py" as Auth {
+        port "Bearer Token Validation" as AuthPort
+    }
+
+    component "cache.py" as Cache {
+        port "In-Memory Cache" as CachePort
+    }
+
+    component "models.py" as Models {
+        port "SQLAlchemy ORM" as ModelsPort
+    }
+
+    component "schemas.py" as Schemas {
+        port "Pydantic Validation" as SchemasPort
+    }
+
+    component "database.py" as Database {
+        port "DB Session" as DBPort
+    }
+
+    component "config.py" as Config {
+        port "Settings" as ConfigPort
+    }
+}
+
+database "SQLite" as DB
+
+Main --> ExpRouter
+Main --> EventRouter
+Main --> FlagRouter
+
+ExpRouter --> Auth
+EventRouter --> Auth
+FlagRouter --> Auth
+
+ExpRouter --> Cache
+FlagRouter --> Cache
+
+ExpRouter --> Models
+EventRouter --> Models
+FlagRouter --> Models
+
+ExpRouter --> Schemas
+EventRouter --> Schemas
+FlagRouter --> Schemas
+
+Models --> Database
+Database --> DB
+
+Auth --> Config
+Database --> Config
+
+@enduml

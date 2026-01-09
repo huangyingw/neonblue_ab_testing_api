@@ -1,0 +1,80 @@
+@startuml System Architecture
+
+!define RECTANGLE class
+
+skinparam componentStyle rectangle
+skinparam backgroundColor white
+skinparam component {
+    BackgroundColor LightBlue
+    BorderColor DarkBlue
+}
+
+title A/B Testing API - System Architecture
+
+package "Client Layer" {
+    [Web Application] as WebApp
+    [Mobile App] as MobileApp
+    [CLI / Scripts] as CLI
+}
+
+package "API Layer" {
+    [FastAPI Application] as API
+
+    package "Routers" {
+        [Experiments Router] as ExpRouter
+        [Events Router] as EventRouter
+        [Feature Flags Router] as FlagRouter
+    }
+
+    package "Middleware" {
+        [Auth Middleware] as Auth
+        [Error Handler] as ErrorHandler
+    }
+}
+
+package "Service Layer" {
+    [Cache Service] as Cache
+    [Assignment Service] as AssignSvc
+    [Statistics Service] as StatsSvc
+}
+
+package "Data Layer" {
+    database "SQLite Database" as DB {
+        [experiments]
+        [variants]
+        [assignments]
+        [events]
+        [feature_flags]
+        [feature_flag_overrides]
+    }
+}
+
+package "Infrastructure" {
+    [Docker Container] as Docker
+    [uvicorn Server] as Uvicorn
+}
+
+' Connections
+WebApp --> API : HTTPS
+MobileApp --> API : HTTPS
+CLI --> API : HTTPS
+
+API --> Auth
+Auth --> ExpRouter
+Auth --> EventRouter
+Auth --> FlagRouter
+
+ExpRouter --> AssignSvc
+ExpRouter --> StatsSvc
+FlagRouter --> Cache
+
+AssignSvc --> Cache
+AssignSvc --> DB
+StatsSvc --> DB
+EventRouter --> DB
+FlagRouter --> DB
+
+Docker --> Uvicorn
+Uvicorn --> API
+
+@enduml

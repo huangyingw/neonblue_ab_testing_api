@@ -1,0 +1,67 @@
+@startuml Results Calculation
+
+skinparam backgroundColor white
+skinparam sequence {
+    ArrowColor DarkOrange
+    ActorBorderColor DarkOrange
+    LifeLineBorderColor DarkOrange
+    ParticipantBackgroundColor LightYellow
+    ParticipantBorderColor DarkOrange
+}
+
+title Experiment Results Calculation Flow
+
+actor Client
+participant "FastAPI" as API
+participant "Auth" as Auth
+participant "Experiments\nRouter" as Router
+participant "Statistics\nService" as Stats
+database "SQLite" as DB
+
+Client -> API : GET /experiments/{id}/results\n?event_type=purchase\n&start_date=...\n&end_date=...
+API -> Auth : Validate token
+Auth --> API : Token valid
+
+API -> Router : Get results
+Router -> DB : Query experiment
+DB --> Router : Experiment data
+
+Router -> DB : Query variants
+DB --> Router : Variants list
+
+loop For each variant
+    Router -> DB : Query assignments\nfor variant
+    DB --> Router : Assignments
+
+    loop For each assignment
+        Router -> DB : Query events\nWHERE user_id = assignment.user_id\nAND timestamp > assignment.assigned_at\nAND event_type = filter (optional)\nAND timestamp BETWEEN start/end
+        DB --> Router : User events
+    end
+
+    Router --> Router : Calculate:\n- user_count\n- event_count\n- conversion_rate\n- events_by_type
+end
+
+Router -> Stats : Calculate chi-square
+Stats --> Stats : Build contingency table\n[[users_with_events, users_without], ...]
+Stats --> Stats : scipy.stats.chi2_contingency()
+Stats --> Router : chi2, p_value, is_significant
+
+Router --> API : ExperimentResults
+
+API --> Client : 200 OK\n{\n  "total_users": 100,\n  "variants": [...],\n  "statistical_significance": {\n    "p_value": 0.03,\n    "is_significant": true\n  }\n}
+
+note right of Router
+  Only events AFTER
+  assignment timestamp
+  are counted
+end note
+
+note right of Stats
+  Chi-square test
+  determines if
+  variant differences
+  are statistically
+  significant (p < 0.05)
+end note
+
+@enduml

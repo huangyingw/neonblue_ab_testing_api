@@ -1,0 +1,95 @@
+@startuml Database ER Diagram
+
+!define TABLE(x) entity x << (T,#FFAAAA) >>
+!define PK(x) <u>x</u>
+!define FK(x) <i>x</i>
+
+skinparam backgroundColor white
+skinparam entity {
+    BackgroundColor LightYellow
+    BorderColor DarkOrange
+}
+
+title A/B Testing API - Database Schema
+
+TABLE(experiments) {
+    PK(id) : INTEGER
+    --
+    name : VARCHAR
+    description : VARCHAR
+    status : VARCHAR
+    created_at : DATETIME
+}
+
+TABLE(variants) {
+    PK(id) : INTEGER
+    --
+    FK(experiment_id) : INTEGER
+    name : VARCHAR
+    traffic_percentage : FLOAT
+    created_at : DATETIME
+}
+
+TABLE(assignments) {
+    PK(id) : INTEGER
+    --
+    FK(experiment_id) : INTEGER
+    FK(variant_id) : INTEGER
+    user_id : VARCHAR
+    assigned_at : DATETIME
+    ==
+    UNIQUE(experiment_id, user_id)
+}
+
+TABLE(events) {
+    PK(id) : INTEGER
+    --
+    user_id : VARCHAR
+    event_type : VARCHAR
+    timestamp : DATETIME
+    properties : JSON
+    ==
+    INDEX(user_id, timestamp)
+    INDEX(event_type)
+}
+
+TABLE(feature_flags) {
+    PK(id) : INTEGER
+    --
+    key : VARCHAR <<unique>>
+    name : VARCHAR
+    description : VARCHAR
+    enabled : INTEGER
+    rollout_percentage : FLOAT
+    created_at : DATETIME
+    updated_at : DATETIME
+}
+
+TABLE(feature_flag_overrides) {
+    PK(id) : INTEGER
+    --
+    FK(feature_flag_id) : INTEGER
+    user_id : VARCHAR
+    enabled : INTEGER
+    created_at : DATETIME
+    ==
+    UNIQUE(feature_flag_id, user_id)
+}
+
+experiments ||--o{ variants : "has"
+experiments ||--o{ assignments : "has"
+variants ||--o{ assignments : "assigned to"
+feature_flags ||--o{ feature_flag_overrides : "has"
+
+note right of assignments
+  Ensures idempotent
+  user assignment
+end note
+
+note right of events
+  Events linked to users
+  via user_id field
+  (not FK for flexibility)
+end note
+
+@enduml

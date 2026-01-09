@@ -13,31 +13,17 @@ A simplified experimentation platform API for managing A/B tests, user assignmen
 - Bearer token authentication
 - Docker deployment support
 
-## Quick Start
-
-### Option 1: Local Development
+## Quick Start (Docker)
 
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the server
-uvicorn app.main:app --reload
-```
-
-### Option 2: Docker
-
-```bash
-# Build and run with docker-compose
+# Production mode
 docker-compose up --build
 
-# Or build manually
-docker build -t ab-testing-api .
-docker run -p 8000:8000 ab-testing-api
+# Development mode (with hot reload)
+docker-compose --profile dev up --build dev
+
+# Run tests
+docker-compose --profile test run --rm test
 ```
 
 The API will be available at `http://localhost:8000`.
