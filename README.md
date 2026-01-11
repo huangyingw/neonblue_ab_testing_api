@@ -11,22 +11,28 @@ A simplified experimentation platform API for managing A/B tests, user assignmen
 - **Feature flags** with rollout percentages and user overrides
 - **In-memory caching** for improved performance
 - Bearer token authentication
+- **PostgreSQL database** with connection pooling
 - Docker deployment support
 
 ## Quick Start (Docker)
 
+The application uses PostgreSQL as its database, running in a Docker container.
+
 ```bash
-# Production mode
-docker-compose up --build
+# Production mode (starts PostgreSQL + API)
+docker compose up --build
 
 # Development mode (with hot reload)
-docker-compose --profile dev up --build dev
+docker compose --profile dev up --build
 
-# Run unit tests
-docker-compose --profile test run --rm test
+# Run unit tests (uses isolated test database)
+docker compose --profile test run --rm test
 
 # Run integration tests (starts API server and runs tests against it)
-docker-compose --profile integration up --abort-on-container-exit
+docker compose --profile integration up --abort-on-container-exit
+
+# Clean up all containers and volumes
+docker compose down -v
 ```
 
 The API will be available at `http://localhost:8000`.
@@ -157,22 +163,22 @@ curl http://localhost:8000/flags/dark-mode/evaluate/user123 \
 
 ## Running Tests
 
-All tests run in Docker containers - no local Python environment needed.
+All tests run in Docker containers with isolated PostgreSQL databases - no local Python environment needed.
 
 ```bash
-# Unit tests (fast, isolated)
-docker-compose --profile test run --rm test
+# Unit tests (fast, uses isolated test database)
+docker compose --profile test run --rm test
 
 # Integration tests (starts API server, runs end-to-end tests)
-docker-compose --profile integration up --abort-on-container-exit
+docker compose --profile integration up --abort-on-container-exit
 
 # Clean up containers after testing
-docker-compose --profile integration down
+docker compose down -v
 ```
 
-**Unit tests (23 tests):** Test individual components in isolation.
+**Unit tests (58 tests):** Test individual components with 95% code coverage.
 
-**Integration tests (11 tests):** Test complete workflows against a live API server:
+**Integration tests (16 tests):** Test complete workflows against a live API server:
 - Health check endpoint
 - Authentication (missing/invalid/valid tokens)
 - Full experiment workflow (create → assign → events → results)
@@ -193,24 +199,30 @@ Run the interactive demo to see all endpoints in action:
 
 ```
 ├── app/
-│   ├── main.py           # FastAPI application
-│   ├── config.py         # Configuration settings
-│   ├── auth.py           # Authentication middleware
-│   ├── cache.py          # In-memory cache with TTL
-│   ├── database.py       # Database connection
-│   ├── models.py         # SQLAlchemy models
-│   ├── schemas.py        # Pydantic schemas
+│   ├── main.py              # FastAPI application
+│   ├── config.py            # Configuration settings
+│   ├── auth.py              # Authentication middleware
+│   ├── cache.py             # In-memory cache with TTL
+│   ├── database.py          # Database connection (PostgreSQL/SQLite)
+│   ├── dependencies.py      # FastAPI dependency injection
+│   ├── models.py            # SQLAlchemy models
+│   ├── schemas.py           # Pydantic schemas
+│   ├── repositories/        # Data access layer (Repository Pattern)
+│   │   ├── interfaces.py    # Abstract repository interfaces
+│   │   └── sqlalchemy/      # SQLAlchemy implementations
+│   │       ├── experiment_repo.py
+│   │       ├── event_repo.py
+│   │       └── feature_flag_repo.py
 │   └── routers/
 │       ├── experiments.py
 │       ├── events.py
 │       └── feature_flags.py
 ├── tests/
-│   ├── test_api.py           # Unit tests
-│   └── test_integration.py   # Integration tests
-├── examples/
-│   └── demo.sh
+│   ├── test_api.py           # Unit tests (58 tests)
+│   ├── test_cache.py         # Cache unit tests
+│   └── test_integration.py   # Integration tests (16 tests)
 ├── Dockerfile
-├── docker-compose.yml
+├── docker-compose.yml        # PostgreSQL + API services
 ├── requirements.txt
 └── DESIGN.md
 ```

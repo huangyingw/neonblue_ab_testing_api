@@ -1,16 +1,32 @@
 version: "3.8"
 
 services:
+  # PostgreSQL database
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=abtest
+      - POSTGRES_PASSWORD=abtest123
+      - POSTGRES_DB=ab_testing
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U abtest -d ab_testing"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # Production API service
   api:
     build: .
     ports:
       - "8000:8000"
-    volumes:
-      - ./data:/app/data
     environment:
-      - DATABASE_URL=sqlite:///./data/ab_testing.db
+      - DATABASE_URL=postgresql://abtest:abtest123@db:5432/ab_testing
       - API_TOKENS=["test-token-123","test-token-456"]
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -25,33 +41,57 @@ services:
       - "8000:8000"
     volumes:
       - ./app:/app/app
-      - ./data:/app/data
     environment:
-      - DATABASE_URL=sqlite:///./data/ab_testing.db
+      - DATABASE_URL=postgresql://abtest:abtest123@db:5432/ab_testing
       - API_TOKENS=["test-token-123","test-token-456"]
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      db:
+        condition: service_healthy
     profiles:
       - dev
 
-  # Unit test runner (isolated, no server needed)
+  # Unit test runner (uses separate test database)
   test:
     build: .
     volumes:
       - ./app:/app/app
       - ./tests:/app/tests
     environment:
-      - DATABASE_URL=sqlite:///./test.db
+      - DATABASE_URL=postgresql://abtest:abtest123@db-test:5432/ab_testing_test
       - API_TOKENS=["test-token-123","test-token-456"]
     command: pytest tests/test_api.py tests/test_cache.py -v --cov=app --cov-report=term-missing --cov-report=html:coverage_report
+    depends_on:
+      db-test:
+        condition: service_healthy
     profiles:
       - test
+
+  # Test database (separate from production)
+  db-test:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=abtest
+      - POSTGRES_PASSWORD=abtest123
+      - POSTGRES_DB=ab_testing_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U abtest -d ab_testing_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - test
+      - integration
 
   # Integration test API server
   api-test:
     build: .
     environment:
-      - DATABASE_URL=sqlite:///./integration_test.db
+      - DATABASE_URL=postgresql://abtest:abtest123@db-test:5432/ab_testing_test
       - API_TOKENS=["test-token-123","test-token-456"]
+    depends_on:
+      db-test:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 5s
@@ -74,3 +114,6 @@ services:
         condition: service_healthy
     profiles:
       - integration
+
+volumes:
+  postgres_data:
