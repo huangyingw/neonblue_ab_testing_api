@@ -5,13 +5,17 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
-from sqlalchemy import func
 from scipy import stats
 
-from app.database import get_db
 from app.auth import verify_token
-from app.models import Experiment, Variant, Assignment, Event
+from app.dependencies import get_experiment_repository, get_event_repository
+from app.repositories.interfaces import (
+    ExperimentRepository,
+    EventRepository,
+    ExperimentInput,
+    ExperimentUpdateInput,
+    VariantInput,
+)
 from app.schemas import (
     ExperimentCreate,
     ExperimentResponse,
@@ -20,16 +24,39 @@ from app.schemas import (
     ExperimentResults,
     VariantMetrics,
     StatisticalSignificance,
+    VariantResponse,
 )
 from app.cache import cache, CACHE_KEY_ASSIGNMENT
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
 
 
+def _to_variant_response(entity) -> VariantResponse:
+    """Convert VariantEntity to VariantResponse."""
+    return VariantResponse(
+        id=entity.id,
+        name=entity.name,
+        traffic_percentage=entity.traffic_percentage,
+        created_at=entity.created_at,
+    )
+
+
+def _to_experiment_response(entity) -> ExperimentResponse:
+    """Convert ExperimentEntity to ExperimentResponse."""
+    return ExperimentResponse(
+        id=entity.id,
+        name=entity.name,
+        description=entity.description,
+        status=entity.status,
+        created_at=entity.created_at,
+        variants=[_to_variant_response(v) for v in entity.variants],
+    )
+
+
 @router.post("", response_model=ExperimentResponse, status_code=status.HTTP_201_CREATED)
 def create_experiment(
     experiment: ExperimentCreate,
-    db: Session = Depends(get_db),
+    repo: ExperimentRepository = Depends(get_experiment_repository),
     _: str = Depends(verify_token),
 ):
     """
@@ -37,79 +64,67 @@ def create_experiment(
 
     The traffic percentages for all variants must sum to 100.
     """
-    # Create experiment
-    db_experiment = Experiment(
+    data = ExperimentInput(
         name=experiment.name,
         description=experiment.description,
-        status="draft",
+        variants=[
+            VariantInput(name=v.name, traffic_percentage=v.traffic_percentage)
+            for v in experiment.variants
+        ],
     )
-    db.add(db_experiment)
-    db.flush()  # Get the experiment ID
-
-    # Create variants
-    for variant in experiment.variants:
-        db_variant = Variant(
-            experiment_id=db_experiment.id,
-            name=variant.name,
-            traffic_percentage=variant.traffic_percentage,
-        )
-        db.add(db_variant)
-
-    db.commit()
-    db.refresh(db_experiment)
-
-    return db_experiment
+    entity = repo.create(data)
+    return _to_experiment_response(entity)
 
 
 @router.get("/{experiment_id}", response_model=ExperimentResponse)
 def get_experiment(
     experiment_id: int,
-    db: Session = Depends(get_db),
+    repo: ExperimentRepository = Depends(get_experiment_repository),
     _: str = Depends(verify_token),
 ):
     """Get an experiment by ID."""
-    experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    entity = repo.get_by_id(experiment_id)
 
-    if not experiment:
+    if not entity:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Experiment with id {experiment_id} not found",
         )
 
-    return experiment
+    return _to_experiment_response(entity)
 
 
 @router.patch("/{experiment_id}", response_model=ExperimentResponse)
 def update_experiment(
     experiment_id: int,
     update: ExperimentUpdate,
-    db: Session = Depends(get_db),
+    repo: ExperimentRepository = Depends(get_experiment_repository),
     _: str = Depends(verify_token),
 ):
     """Update an experiment's name, description, or status."""
-    experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    update_data = update.model_dump(exclude_unset=True)
+    data = ExperimentUpdateInput(
+        name=update_data.get("name"),
+        description=update_data.get("description"),
+        status=update_data.get("status"),
+    )
 
-    if not experiment:
+    entity = repo.update(experiment_id, data)
+
+    if not entity:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Experiment with id {experiment_id} not found",
         )
 
-    update_data = update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(experiment, field, value)
-
-    db.commit()
-    db.refresh(experiment)
-
-    return experiment
+    return _to_experiment_response(entity)
 
 
 @router.get("/{experiment_id}/assignment/{user_id}", response_model=AssignmentResponse)
 def get_assignment(
     experiment_id: int,
     user_id: str,
-    db: Session = Depends(get_db),
+    repo: ExperimentRepository = Depends(get_experiment_repository),
     _: str = Depends(verify_token),
 ):
     """
@@ -127,7 +142,7 @@ def get_assignment(
         return cached_result
 
     # Check if experiment exists
-    experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    experiment = repo.get_by_id(experiment_id)
     if not experiment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -135,25 +150,21 @@ def get_assignment(
         )
 
     # Check for existing assignment
-    existing_assignment = (
-        db.query(Assignment)
-        .filter(Assignment.experiment_id == experiment_id, Assignment.user_id == user_id)
-        .first()
-    )
+    existing_assignment = repo.get_assignment(experiment_id, user_id)
 
     if existing_assignment:
         response = AssignmentResponse(
             experiment_id=existing_assignment.experiment_id,
             variant_id=existing_assignment.variant_id,
-            variant_name=existing_assignment.variant.name,
+            variant_name=existing_assignment.variant_name,
             user_id=existing_assignment.user_id,
             assigned_at=existing_assignment.assigned_at,
         )
-        cache.set(cache_key, response, ttl=300)  # Cache for 5 minutes
+        cache.set(cache_key, response, ttl=300)
         return response
 
-    # Assign user to a variant based on traffic percentages
-    variants = db.query(Variant).filter(Variant.experiment_id == experiment_id).all()
+    # Get variants for weighted random selection
+    variants = repo.get_variants(experiment_id)
 
     if not variants:
         raise HTTPException(
@@ -164,7 +175,7 @@ def get_assignment(
     # Weighted random selection based on traffic percentages
     rand = random.uniform(0, 100)
     cumulative = 0
-    selected_variant = variants[-1]  # Default to last variant
+    selected_variant = variants[-1]
 
     for variant in variants:
         cumulative += variant.traffic_percentage
@@ -173,23 +184,16 @@ def get_assignment(
             break
 
     # Create assignment
-    assignment = Assignment(
-        experiment_id=experiment_id,
-        variant_id=selected_variant.id,
-        user_id=user_id,
-    )
-    db.add(assignment)
-    db.commit()
-    db.refresh(assignment)
+    assignment = repo.create_assignment(experiment_id, selected_variant.id, user_id)
 
     response = AssignmentResponse(
         experiment_id=assignment.experiment_id,
         variant_id=assignment.variant_id,
-        variant_name=selected_variant.name,
+        variant_name=assignment.variant_name,
         user_id=assignment.user_id,
         assigned_at=assignment.assigned_at,
     )
-    cache.set(cache_key, response, ttl=300)  # Cache for 5 minutes
+    cache.set(cache_key, response, ttl=300)
     return response
 
 
@@ -199,7 +203,8 @@ def get_results(
     event_type: Optional[str] = Query(None, description="Filter by event type"),
     start_date: Optional[datetime] = Query(None, description="Filter events after this date"),
     end_date: Optional[datetime] = Query(None, description="Filter events before this date"),
-    db: Session = Depends(get_db),
+    experiment_repo: ExperimentRepository = Depends(get_experiment_repository),
+    event_repo: EventRepository = Depends(get_event_repository),
     _: str = Depends(verify_token),
 ):
     """
@@ -209,7 +214,7 @@ def get_results(
     Supports filtering by event type and date range.
     """
     # Check if experiment exists
-    experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    experiment = experiment_repo.get_by_id(experiment_id)
     if not experiment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -217,46 +222,38 @@ def get_results(
         )
 
     # Get all variants for this experiment
-    variants = db.query(Variant).filter(Variant.experiment_id == experiment_id).all()
+    variants = experiment.variants
 
     # Build variant metrics
     variant_metrics = []
     total_users = 0
     total_events = 0
-    contingency_data = []  # For chi-square test
+    contingency_data = []
 
     for variant in variants:
         # Get assignments for this variant
-        assignments = (
-            db.query(Assignment)
-            .filter(Assignment.variant_id == variant.id)
-            .all()
-        )
+        assignments = experiment_repo.get_assignments_by_variant(variant.id)
         user_count = len(assignments)
         total_users += user_count
 
         # Get events for users in this variant (only after assignment)
         event_count = 0
         events_by_type: dict[str, int] = {}
+        users_with_events = set()
 
         for assignment in assignments:
-            # Build event query
-            query = db.query(Event).filter(
-                Event.user_id == assignment.user_id,
-                Event.timestamp > assignment.assigned_at,
+            user_events = event_repo.get_events_for_user_after(
+                user_id=assignment.user_id,
+                after=assignment.assigned_at,
+                event_type=event_type,
+                start_date=start_date,
+                end_date=end_date,
             )
-
-            if event_type:
-                query = query.filter(Event.event_type == event_type)
-            if start_date:
-                query = query.filter(Event.timestamp >= start_date)
-            if end_date:
-                query = query.filter(Event.timestamp <= end_date)
-
-            user_events = query.all()
             event_count += len(user_events)
 
-            # Count events by type
+            if user_events:
+                users_with_events.add(assignment.user_id)
+
             for event in user_events:
                 events_by_type[event.event_type] = events_by_type.get(event.event_type, 0) + 1
 
@@ -276,15 +273,8 @@ def get_results(
             )
         )
 
-        # Store data for chi-square test (users with events, users without events)
-        users_with_events = len(set(
-            e.user_id for a in assignments
-            for e in db.query(Event).filter(
-                Event.user_id == a.user_id,
-                Event.timestamp > a.assigned_at,
-            ).all()
-        ))
-        contingency_data.append([users_with_events, user_count - users_with_events])
+        # Store data for chi-square test
+        contingency_data.append([len(users_with_events), user_count - len(users_with_events)])
 
     # Calculate statistical significance using chi-square test
     statistical_significance = None
@@ -298,7 +288,6 @@ def get_results(
                 confidence_level=0.95,
             )
         except Exception:
-            # Chi-square test may fail with certain data distributions
             pass
 
     # Build time range info

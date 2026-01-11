@@ -4,20 +4,30 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.orm import Session
 
-from app.database import get_db
 from app.auth import verify_token
-from app.models import Event
+from app.dependencies import get_event_repository
+from app.repositories.interfaces import EventRepository, EventInput, EventFilter
 from app.schemas import EventCreate, EventResponse
 
 router = APIRouter(prefix="/events", tags=["events"])
 
 
+def _to_event_response(entity) -> EventResponse:
+    """Convert EventEntity to EventResponse."""
+    return EventResponse(
+        id=entity.id,
+        user_id=entity.user_id,
+        event_type=entity.event_type,
+        timestamp=entity.timestamp,
+        properties=entity.properties,
+    )
+
+
 @router.post("", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
 def create_event(
     event: EventCreate,
-    db: Session = Depends(get_db),
+    repo: EventRepository = Depends(get_event_repository),
     _: str = Depends(verify_token),
 ):
     """
@@ -26,17 +36,14 @@ def create_event(
     Events must include user_id, event_type, and optionally timestamp and properties.
     If timestamp is not provided, the current time is used.
     """
-    db_event = Event(
+    data = EventInput(
         user_id=event.user_id,
         event_type=event.event_type,
-        timestamp=event.timestamp or datetime.utcnow(),
+        timestamp=event.timestamp,
         properties=event.properties,
     )
-    db.add(db_event)
-    db.commit()
-    db.refresh(db_event)
-
-    return db_event
+    entity = repo.create(data)
+    return _to_event_response(entity)
 
 
 @router.get("", response_model=list[EventResponse])
@@ -47,7 +54,7 @@ def list_events(
     end_date: Optional[datetime] = Query(None, description="Filter events before this date"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of events to return"),
     offset: int = Query(0, ge=0, description="Number of events to skip"),
-    db: Session = Depends(get_db),
+    repo: EventRepository = Depends(get_event_repository),
     _: str = Depends(verify_token),
 ):
     """
@@ -56,18 +63,13 @@ def list_events(
     Supports filtering by user_id, event_type, and date range.
     Results are paginated with limit and offset parameters.
     """
-    query = db.query(Event)
-
-    if user_id:
-        query = query.filter(Event.user_id == user_id)
-    if event_type:
-        query = query.filter(Event.event_type == event_type)
-    if start_date:
-        query = query.filter(Event.timestamp >= start_date)
-    if end_date:
-        query = query.filter(Event.timestamp <= end_date)
-
-    query = query.order_by(Event.timestamp.desc())
-    query = query.offset(offset).limit(limit)
-
-    return query.all()
+    filter = EventFilter(
+        user_id=user_id,
+        event_type=event_type,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+        offset=offset,
+    )
+    entities = repo.list(filter)
+    return [_to_event_response(e) for e in entities]
