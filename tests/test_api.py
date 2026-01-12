@@ -1,40 +1,65 @@
-"""Unit tests for the A/B Testing API."""
+"""Unit tests for the A/B Testing API.
+
+These tests use mock repositories and are completely isolated from any database.
+No real database is touched during test execution.
+"""
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from app.main import app
-from app.database import Base, get_db
-
-# Use in-memory SQLite for tests
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def override_get_db():
-    """Override database dependency for testing."""
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+from app.dependencies import (
+    get_experiment_repository,
+    get_event_repository,
+    get_feature_flag_repository,
+)
+from app.cache import cache
+from tests.mocks import (
+    MockExperimentRepository,
+    MockEventRepository,
+    MockFeatureFlagRepository,
+)
 
 
-app.dependency_overrides[get_db] = override_get_db
+# Create mock repository instances
+mock_experiment_repo = MockExperimentRepository()
+mock_event_repo = MockEventRepository()
+mock_feature_flag_repo = MockFeatureFlagRepository()
+
+
+def override_experiment_repository():
+    """Provide mock experiment repository."""
+    return mock_experiment_repo
+
+
+def override_event_repository():
+    """Provide mock event repository."""
+    return mock_event_repo
+
+
+def override_feature_flag_repository():
+    """Provide mock feature flag repository."""
+    return mock_feature_flag_repo
+
+
+# Override dependencies with mocks
+app.dependency_overrides[get_experiment_repository] = override_experiment_repository
+app.dependency_overrides[get_event_repository] = override_event_repository
+app.dependency_overrides[get_feature_flag_repository] = override_feature_flag_repository
+
 
 client = TestClient(app)
 AUTH_HEADER = {"Authorization": "Bearer test-token-123"}
 
 
 @pytest.fixture(autouse=True)
-def setup_database():
-    """Create tables before each test and drop after."""
-    Base.metadata.create_all(bind=engine)
+def reset_mocks():
+    """Reset all mock repositories and cache before each test."""
+    mock_experiment_repo.reset()
+    mock_event_repo.reset()
+    mock_feature_flag_repo.reset()
+    cache.clear()
     yield
-    Base.metadata.drop_all(bind=engine)
 
 
 class TestHealthCheck:
@@ -51,7 +76,7 @@ class TestAuthentication:
 
     def test_missing_token(self):
         response = client.post("/experiments", json={})
-        assert response.status_code in [401, 403]  # HTTPBearer returns 401 or 403
+        assert response.status_code in [401, 403]
 
     def test_invalid_token(self):
         response = client.post(
@@ -275,7 +300,7 @@ class TestAssignments:
             variant_name = response.json()["variant_name"]
             variants_count[variant_name] += 1
 
-        # With 50/50 split, both should have users (not exact 50 due to randomness)
+        # With 50/50 split, both should have users
         assert variants_count["Control"] > 0
         assert variants_count["Treatment"] > 0
 
@@ -696,7 +721,7 @@ class TestFeatureFlags:
                 enabled_count += 1
                 assert response.json()["reason"] == "rollout"
 
-        # Should have some enabled and some disabled (probabilistic)
+        # Should have some enabled and some disabled
         assert enabled_count > 0
         assert enabled_count < 100
 
