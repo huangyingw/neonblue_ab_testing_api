@@ -9,46 +9,73 @@ skinparam artifact {
     BackgroundColor LightGoldenRodYellow
     BorderColor DarkGoldenRod
 }
+skinparam database {
+    BackgroundColor LightCyan
+    BorderColor DarkCyan
+}
 
 title A/B Testing API - Deployment Architecture
 
-node "Development Machine" as Dev {
-    artifact "Source Code" as Source
-    artifact "docker-compose.yml" as Compose
+node "Docker Compose Environment" as DockerEnv {
 
-    node "Docker Engine" as DevDocker {
+    node "Production Profile" as Prod #LightGreen {
+        node "db container" as DBContainer {
+            database "PostgreSQL 16\n(Alpine)" as ProdDB
+        }
+
+        node "api container" as ProdContainer {
+            artifact "FastAPI App" as ProdApp
+            artifact "uvicorn" as ProdUvicorn
+        }
+
+        ProdContainer --> DBContainer : "DATABASE_URL\npostgresql://..."
+    }
+
+    node "Development Profile" as Dev #LightYellow {
+        node "db container" as DevDBContainer {
+            database "PostgreSQL 16" as DevDB
+        }
+
         node "dev container" as DevContainer {
             artifact "FastAPI App" as DevApp
             artifact "uvicorn\n(--reload)" as DevUvicorn
-            database "SQLite\n(mounted)" as DevDB
         }
-    }
-}
 
-node "Test Environment" as Test {
-    node "Docker Engine" as TestDocker {
+        DevContainer --> DevDBContainer
+    }
+
+    node "Test Profile" as Test #LightPink {
+        node "db-test container" as TestDBContainer {
+            database "PostgreSQL 16\n(isolated)" as TestDB
+        }
+
         node "test container" as TestContainer {
-            artifact "FastAPI App" as TestApp
             artifact "pytest" as Pytest
-            database "SQLite\n(in-memory)" as TestDB
+            artifact "Mock Repositories" as MockRepo
         }
-    }
-}
 
-node "Production Environment" as Prod {
-    node "Docker Host" as ProdHost {
-        node "api container" as ProdContainer {
-            artifact "FastAPI App" as ProdApp
-            artifact "uvicorn\n(workers)" as ProdUvicorn
-        }
+        note right of MockRepo
+          Unit tests use
+          mock repositories
+          (no DB access)
+        end note
     }
 
-    database "SQLite\n(volume)" as ProdDB
+    node "Integration Profile" as Integration #LightCoral {
+        node "db-test container" as IntDBContainer {
+            database "PostgreSQL 16" as IntDB
+        }
 
-    node "Future Scale" as Future {
-        artifact "PostgreSQL" as Postgres
-        artifact "Redis Cache" as Redis
-        artifact "Load Balancer" as LB
+        node "api-test container" as IntAPIContainer {
+            artifact "FastAPI App" as IntApp
+        }
+
+        node "integration container" as IntTestContainer {
+            artifact "pytest\n(integration)" as IntPytest
+        }
+
+        IntAPIContainer --> IntDBContainer
+        IntTestContainer --> IntAPIContainer : "HTTP requests"
     }
 }
 
@@ -56,20 +83,22 @@ cloud "Internet" as Internet {
     actor "API Clients" as Clients
 }
 
-Source --> DevDocker : docker-compose up --profile dev
-Source --> TestDocker : docker-compose up --profile test
-Source --> ProdHost : docker-compose up
+Clients --> ProdContainer : "HTTPS:8000"
 
-DevContainer --> DevDB : /app/data
-ProdContainer --> ProdDB : volume mount
+note bottom of DockerEnv
+  **Commands:**
+  Production: docker compose up
+  Development: docker compose --profile dev up
+  Unit Tests: docker compose --profile test run --rm test
+  Integration: docker compose --profile integration up --abort-on-container-exit
+end note
 
-Clients --> ProdContainer : HTTPS:8000
-
-note right of Future
-  For production scale:
-  - Migrate SQLite → PostgreSQL
-  - Add Redis for distributed cache
-  - Add load balancer for horizontal scaling
+note right of Prod
+  **Production Features:**
+  - Connection pooling (pool_size=5)
+  - Health checks
+  - Auto-restart
+  - Persistent volume
 end note
 
 @enduml

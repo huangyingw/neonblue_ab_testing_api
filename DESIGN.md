@@ -7,11 +7,12 @@
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
 | Framework | FastAPI | Modern async Python framework with automatic OpenAPI docs, type hints, and excellent performance |
-| Database | SQLite | Simple, file-based, zero configuration. Easy to swap for PostgreSQL in production |
+| Database | PostgreSQL 16 | Production-grade RDBMS with connection pooling, JSONB support for flexible event properties, better concurrency than SQLite |
 | ORM | SQLAlchemy | Industry standard, supports multiple databases, handles connection pooling |
 | Validation | Pydantic | Native FastAPI integration, automatic request/response validation |
 | Statistics | SciPy | Robust statistical testing library for chi-square significance calculation |
 | Architecture | Repository Pattern | Clean separation between API and data access layers |
+| Containerization | Docker Compose | Multi-profile setup for production, development, and testing environments |
 
 ### Repository Pattern Architecture
 
@@ -41,7 +42,7 @@ The application uses the Repository pattern to abstract data access, providing a
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Database (SQLite)                         │
+│                   Database (PostgreSQL)                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -169,10 +170,10 @@ The results endpoint is designed to support multiple use cases:
 
 ### Database
 
-1. **Migrate to PostgreSQL**: Better concurrency, more robust for production
-2. **Read replicas**: For heavy result queries
-3. **Connection pooling**: Use PgBouncer or SQLAlchemy pool settings
-4. **Partitioning**: Partition events table by timestamp for large datasets
+1. **Read replicas**: For heavy result queries, add PostgreSQL read replicas
+2. **Connection pooling**: Currently using SQLAlchemy pool (pool_size=5, max_overflow=10); can add PgBouncer for larger deployments
+3. **Partitioning**: Partition events table by timestamp for large datasets
+4. **Indexing**: Additional indexes for high-cardinality queries
 
 ### Caching
 
@@ -249,7 +250,7 @@ Typical approaches to testing database-backed applications:
 ├─────────────────────────────────────────────────────────────┤
 │  FastAPI  →  Repository Interface  →  SQLAlchemy Impl       │
 │                                            ↓                 │
-│                                      [SQLite/PostgreSQL]     │
+│                                       [PostgreSQL]           │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
@@ -349,5 +350,70 @@ def reset_mocks():
    - Dependency injection via FastAPI
 10. **Full Docker Containerization**:
     - Production, development, and test profiles
+    - PostgreSQL database in containers
     - No local Python environment required
     - Integration tests run in containers
+
+---
+
+## Architecture Highlights for Reviewers
+
+### Why Repository Pattern?
+
+The Repository pattern was chosen specifically for this project to demonstrate:
+
+1. **Separation of Concerns**: Business logic in routers is completely decoupled from data access implementation
+2. **Testability**: Unit tests inject mock repositories, eliminating database dependencies
+3. **Flexibility**: Can swap PostgreSQL for another database without changing router code
+4. **Type Safety**: Abstract interfaces define clear contracts between layers
+
+### Extensibility Points
+
+| Extension | How to Implement | Effort |
+|-----------|------------------|--------|
+| Add new database | Create new repository implementation | Medium |
+| Add Redis cache | Implement cache-aside in repositories | Low |
+| Add new entity (e.g., Segments) | Add interface + SQLAlchemy impl + mock | Medium |
+| Switch to async | Use async SQLAlchemy, minimal router changes | Medium |
+| Add message queue | Inject queue service via dependency injection | Low |
+
+### Design Patterns Used
+
+| Pattern | Where | Purpose |
+|---------|-------|---------|
+| **Repository** | `repositories/` | Abstract data access |
+| **Dependency Injection** | `dependencies.py` | Loose coupling, testability |
+| **Strategy** | Cache decorator | Pluggable caching strategies |
+| **Factory** | Repository providers | Create appropriate implementations |
+
+### Code Quality Indicators
+
+- **No circular imports**: Clean dependency graph
+- **Single Responsibility**: Each module has one purpose
+- **Open/Closed**: Add features without modifying existing code
+- **Interface Segregation**: Focused repository interfaces
+- **Dependency Inversion**: High-level modules depend on abstractions
+
+### Test Strategy
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Unit Tests (58)          │  Fast, Isolated, No I/O        │
+│  - Mock repositories      │  Run in ~5 seconds             │
+│  - Test business logic    │  Safe for CI/CD                │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│  Integration Tests (16)   │  Full Stack Validation         │
+│  - Real PostgreSQL        │  End-to-end workflows          │
+│  - Real HTTP requests     │  Catch integration issues      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Future Roadmap
+
+1. **Phase 1 (Current)**: Monolithic API with PostgreSQL
+2. **Phase 2**: Add Redis for distributed caching
+3. **Phase 3**: Event streaming with Kafka/RabbitMQ
+4. **Phase 4**: Microservices split (Experiments, Events, Flags)
+5. **Phase 5**: Real-time results with WebSocket/SSE

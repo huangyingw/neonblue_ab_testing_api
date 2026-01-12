@@ -40,7 +40,7 @@ rectangle "Docker Container" as Docker #LightBlue {
         }
     }
 
-    database "SQLite" as DB #WhiteSmoke {
+    database "PostgreSQL" as DB #WhiteSmoke {
         [experiments]
         [variants]
         [assignments]
