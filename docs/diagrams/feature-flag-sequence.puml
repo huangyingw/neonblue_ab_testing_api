@@ -9,63 +9,79 @@ skinparam sequence {
     ParticipantBorderColor DarkGreen
 }
 
-title Feature Flag Evaluation Flow
+title Feature Flag Evaluation Flow (Repository Pattern)
 
 actor Client
-participant "FastAPI" as API
+participant "Router\n(feature_flags.py)" as Router
 participant "Auth" as Auth
 participant "Cache" as Cache
-participant "Feature Flag\nRouter" as Router
+participant "FeatureFlagRepository\n(interface)" as Repo
+participant "SQLAlchemy\nImplementation" as Impl
 database "SQLite" as DB
 
-Client -> API : GET /flags/{key}/evaluate/{user_id}\n[Authorization: Bearer token]
-API -> Auth : Validate token
-Auth --> API : Token valid
+Client -> Router : GET /flags/{key}/evaluate/{user_id}\n[Authorization: Bearer token]
+Router -> Auth : Validate token
+Auth --> Router : Token valid
 
-API -> Router : Evaluate flag
 Router -> Cache : Check cache\nkey: "flag_eval:{key}:{user_id}"
 
 alt Cache Hit
     Cache --> Router : Cached result
-    Router --> API : FeatureFlagEvaluation
-    API --> Client : 200 OK
+    Router --> Client : 200 OK
 
 else Cache Miss
     Cache --> Router : Not found
 
-    Router -> DB : Query feature flag
-    DB --> Router : Flag data
+    Router -> Repo : get_by_key(key)
+    Repo -> Impl : get_by_key()
+    Impl -> DB : SELECT feature_flag
+    DB --> Impl : Flag data
+    Impl --> Repo : FeatureFlagEntity
+    Repo --> Router : FeatureFlagEntity
 
-    alt User Override Exists
-        Router -> DB : Query user override
-        DB --> Router : Override found
-        Router --> Router : reason = "user_override"
+    alt User Override Check
+        Router -> Repo : get_user_override(flag_id, user_id)
+        Repo -> Impl : get_user_override()
+        Impl -> DB : SELECT override
+        DB --> Impl : Override data
+        Impl --> Repo : FeatureFlagOverrideEntity | None
+        Repo --> Router : Override | None
 
-    else Flag Globally Enabled
-        Router --> Router : reason = "global"
+        alt Override Found
+            Router --> Router : enabled = override.enabled\nreason = "user_override"
 
-    else Rollout Percentage > 0
-        Router --> Router : Calculate hash\nMD5(key:user_id) % 100
+        else Flag Globally Enabled
+            Router --> Router : enabled = true\nreason = "global"
 
-        alt Hash < rollout_percentage
-            Router --> Router : enabled = true\nreason = "rollout"
+        else Rollout Percentage > 0
+            Router --> Router : Calculate hash\nMD5(key:user_id) % 100
+
+            alt Hash < rollout_percentage
+                Router --> Router : enabled = true\nreason = "rollout"
+            else
+                Router --> Router : enabled = false\nreason = "disabled"
+            end
+
         else
             Router --> Router : enabled = false\nreason = "disabled"
         end
-
-    else
-        Router --> Router : enabled = false\nreason = "disabled"
     end
 
     Router -> Cache : Store result (TTL: 1min)
     Cache --> Router : Cached
 
-    Router --> API : FeatureFlagEvaluation
-    API --> Client : 200 OK\n{"key": "...", "enabled": true/false, "reason": "..."}
+    Router --> Client : 200 OK\n{"key": "...", "enabled": true/false, "reason": "..."}
 end
 
-note right of Router
-  Evaluation Priority:
+note right of Repo
+  **Repository Pattern:**
+  - get_by_key() returns Entity
+  - get_user_override() for overrides
+  - No SQLAlchemy in Router
+end note
+
+note left of Router
+  **Evaluation Priority:**
   1. User Override
   2. Global Enable
   3. Rollout Percentage

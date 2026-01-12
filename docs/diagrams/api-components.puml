@@ -4,12 +4,13 @@ skinparam backgroundColor white
 skinparam defaultFontSize 12
 skinparam rectangleBorderColor #333333
 
-title A/B Testing API - Component Structure
+title A/B Testing API - Component Structure (Repository Pattern)
 
 rectangle "app/" as App #LightBlue {
 
     rectangle "Entry Point" as Entry #LightGreen {
         [main.py] as Main
+        [dependencies.py] as Deps
     }
 
     rectangle "API Routers" as Routers #LightYellow {
@@ -23,23 +24,42 @@ rectangle "app/" as App #LightBlue {
         [cache.py] as Cache
     }
 
-    rectangle "Data Access" as Data #LightCyan {
+    rectangle "repositories/" as RepoDir #Wheat {
+
+        rectangle "Interfaces" as Interfaces #White {
+            [interfaces.py] as IRepo
+            note right of IRepo
+              Entity classes
+              Abstract repos
+            end note
+        }
+
+        rectangle "sqlalchemy/" as SQLADir #LightGray {
+            [experiment_repo.py] as ExpImpl
+            [event_repo.py] as EventImpl
+            [feature_flag_repo.py] as FlagImpl
+        }
+    }
+
+    rectangle "Data Layer" as Data #LightCyan {
         [models.py] as Models
         [schemas.py] as Schemas
         [database.py] as DB
     }
 
-    rectangle "Configuration" as Config #LightGray {
+    rectangle "Configuration" as Config #WhiteSmoke {
         [config.py] as Conf
     }
 }
 
 database "SQLite" as SQLite #WhiteSmoke
 
+' Entry point connections
 Main --> ExpR
 Main --> EventR
 Main --> FlagR
 
+' Router dependencies
 ExpR --> Auth
 EventR --> Auth
 FlagR --> Auth
@@ -47,14 +67,27 @@ FlagR --> Auth
 ExpR --> Cache
 FlagR --> Cache
 
-ExpR --> Models
-EventR --> Models
-FlagR --> Models
+' Routers use Repository interfaces (via Deps)
+ExpR --> Deps
+EventR --> Deps
+FlagR --> Deps
 
+Deps --> IRepo : provides
+Deps --> ExpImpl
+Deps --> EventImpl
+Deps --> FlagImpl
+
+' Implementations use Models
+ExpImpl --> Models
+EventImpl --> Models
+FlagImpl --> Models
+
+' Routers use Schemas
 ExpR --> Schemas
 EventR --> Schemas
 FlagR --> Schemas
 
+' Data layer connections
 Models --> DB
 DB --> SQLite
 DB --> Conf
@@ -65,12 +98,16 @@ note right of Routers
   /experiments/*
   /events/*
   /flags/*
+
+  Depend on interfaces
+  not implementations
 end note
 
-note right of Cache
-  In-memory TTL cache
-  for assignments and
-  flag evaluations
+note bottom of RepoDir
+  **Repository Pattern:**
+  - interfaces.py: Abstract contracts
+  - sqlalchemy/: Concrete implementations
+  - Dependency injection via dependencies.py
 end note
 
 @enduml

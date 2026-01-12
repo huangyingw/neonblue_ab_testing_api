@@ -3,7 +3,7 @@
 skinparam backgroundColor white
 skinparam defaultFontSize 12
 
-title A/B Testing API - System Architecture (Simplified)
+title A/B Testing API - System Architecture (Repository Pattern)
 
 ' ===== Clients =====
 actor "Web App" as Web
@@ -19,7 +19,7 @@ rectangle "Docker Container" as Docker #LightBlue {
             [Bearer Token\nValidation] as Auth
         }
 
-        rectangle "API Endpoints" as Endpoints #LightCyan {
+        rectangle "API Routers" as Endpoints #LightCyan {
             [/experiments] as Exp
             [/events] as Event
             [/flags] as Flags
@@ -27,6 +27,16 @@ rectangle "Docker Container" as Docker #LightBlue {
 
         rectangle "Caching" as CacheLayer #LightPink {
             [In-Memory Cache\n(TTL: 1-5 min)] as Cache
+        }
+
+        rectangle "Repository Layer" as RepoLayer #Wheat {
+            [ExperimentRepository] as ExpRepo
+            [EventRepository] as EventRepo
+            [FeatureFlagRepository] as FlagRepo
+        }
+
+        rectangle "Repository Implementations" as RepoImpl #LightGray {
+            [SQLAlchemy\nImplementations] as SQLAImpl
         }
     }
 
@@ -51,9 +61,15 @@ Auth --> Flags
 Exp --> Cache : read/write
 Flags --> Cache : read/write
 
-Exp --> DB
-Event --> DB
-Flags --> DB
+Exp --> ExpRepo : interface
+Event --> EventRepo : interface
+Flags --> FlagRepo : interface
+
+ExpRepo --> SQLAImpl
+EventRepo --> SQLAImpl
+FlagRepo --> SQLAImpl
+
+SQLAImpl --> DB
 
 ' ===== Notes =====
 note bottom of Docker
@@ -62,6 +78,13 @@ note bottom of Docker
 
   **Port:** 8000
   **Docs:** /docs
+end note
+
+note right of RepoLayer
+  **Abstraction Layer:**
+  - Hides DB implementation
+  - Enables easy testing
+  - Supports DB switching
 end note
 
 note right of Cache

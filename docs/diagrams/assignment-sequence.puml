@@ -9,52 +9,77 @@ skinparam sequence {
     ParticipantBorderColor DarkBlue
 }
 
-title User Assignment Flow (Idempotent)
+title User Assignment Flow (Repository Pattern)
 
 actor Client
-participant "FastAPI" as API
+participant "Router\n(experiments.py)" as Router
 participant "Auth" as Auth
 participant "Cache" as Cache
-participant "Assignment\nService" as Service
+participant "ExperimentRepository\n(interface)" as Repo
+participant "SQLAlchemy\nImplementation" as Impl
 database "SQLite" as DB
 
 == First Request ==
 
-Client -> API : GET /experiments/{id}/assignment/{user_id}\n[Authorization: Bearer token]
-API -> Auth : Validate token
-Auth --> API : Token valid
+Client -> Router : GET /experiments/{id}/assignment/{user_id}\n[Authorization: Bearer token]
+Router -> Auth : Validate token
+Auth --> Router : Token valid
 
-API -> Cache : Check cache\nkey: "assignment:{id}:{user_id}"
-Cache --> API : Cache miss
+Router -> Cache : Check cache\nkey: "assignment:{id}:{user_id}"
+Cache --> Router : Cache miss
 
-API -> Service : Get or create assignment
-Service -> DB : Query existing assignment
-DB --> Service : Not found
+Router -> Repo : get_by_id(experiment_id)
+Repo -> Impl : get_by_id()
+Impl -> DB : SELECT experiment
+DB --> Impl : Experiment data
+Impl --> Repo : ExperimentEntity
+Repo --> Router : ExperimentEntity
 
-Service -> DB : Query variants for experiment
-DB --> Service : Variants list
+Router -> Repo : get_assignment(experiment_id, user_id)
+Repo -> Impl : get_assignment()
+Impl -> DB : SELECT assignment
+DB --> Impl : Not found
+Impl --> Repo : None
+Repo --> Router : None
 
-Service -> Service : Calculate weighted\nrandom selection
+Router -> Repo : get_variants(experiment_id)
+Repo -> Impl : get_variants()
+Impl -> DB : SELECT variants
+DB --> Impl : Variants list
+Impl --> Repo : list[VariantEntity]
+Repo --> Router : list[VariantEntity]
 
-Service -> DB : INSERT assignment
-DB --> Service : Assignment created
+Router -> Router : Calculate weighted\nrandom selection
 
-Service -> Cache : Store in cache (TTL: 5min)
-Cache --> Service : Cached
+Router -> Repo : create_assignment(experiment_id, variant_id, user_id)
+Repo -> Impl : create_assignment()
+Impl -> DB : INSERT assignment
+DB --> Impl : Created
+Impl --> Repo : AssignmentEntity
+Repo --> Router : AssignmentEntity
 
-Service --> API : AssignmentResponse
-API --> Client : 200 OK\n{"variant_name": "Control", ...}
+Router -> Cache : Store in cache (TTL: 5min)
+Cache --> Router : Cached
+
+Router --> Client : 200 OK\n{"variant_name": "Control", ...}
 
 == Subsequent Request (Same User) ==
 
-Client -> API : GET /experiments/{id}/assignment/{user_id}\n[Authorization: Bearer token]
-API -> Auth : Validate token
-Auth --> API : Token valid
+Client -> Router : GET /experiments/{id}/assignment/{user_id}\n[Authorization: Bearer token]
+Router -> Auth : Validate token
+Auth --> Router : Token valid
 
-API -> Cache : Check cache\nkey: "assignment:{id}:{user_id}"
-Cache --> API : Cache hit!
+Router -> Cache : Check cache\nkey: "assignment:{id}:{user_id}"
+Cache --> Router : Cache hit!
 
-API --> Client : 200 OK\n{"variant_name": "Control", ...}\n(Same assignment - Idempotent)
+Router --> Client : 200 OK\n{"variant_name": "Control", ...}\n(Same assignment - Idempotent)
+
+note right of Repo
+  **Repository Pattern:**
+  Router depends on
+  abstract interface,
+  not SQLAlchemy directly
+end note
 
 note right of Cache
   Cache ensures fast
