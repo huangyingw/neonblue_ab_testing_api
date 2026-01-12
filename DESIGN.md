@@ -11,6 +11,98 @@
 | ORM | SQLAlchemy | Industry standard, supports multiple databases, handles connection pooling |
 | Validation | Pydantic | Native FastAPI integration, automatic request/response validation |
 | Statistics | SciPy | Robust statistical testing library for chi-square significance calculation |
+| Architecture | Repository Pattern | Clean separation between API and data access layers |
+
+### Repository Pattern Architecture
+
+The application uses the Repository pattern to abstract data access, providing a clean separation between the API layer and database implementation.
+
+#### Layer Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      API Layer (Routers)                     │
+│  experiments.py │ events.py │ feature_flags.py              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ Depends on interfaces only
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Repository Interfaces                      │
+│  ExperimentRepository │ EventRepository │ FeatureFlagRepo   │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ Implementations
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 SQLAlchemy Implementations                   │
+│  SQLAlchemyExperimentRepo │ SQLAlchemyEventRepo │ ...       │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Database (SQLite)                         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Directory Structure
+
+```
+app/
+├── dependencies.py              # FastAPI dependency injection
+├── repositories/
+│   ├── __init__.py
+│   ├── interfaces.py           # Abstract interfaces + Entity classes
+│   └── sqlalchemy/
+│       ├── __init__.py
+│       ├── experiment_repo.py  # SQLAlchemy implementation
+│       ├── event_repo.py
+│       └── feature_flag_repo.py
+└── routers/                    # API endpoints (depend on interfaces)
+```
+
+#### Entity Classes
+
+Database-agnostic data structures (pure Python dataclasses):
+
+| Entity | Description |
+|--------|-------------|
+| `ExperimentEntity` | Experiment with variants |
+| `VariantEntity` | Experiment variant |
+| `AssignmentEntity` | User-to-variant assignment |
+| `EventEntity` | User event/action |
+| `FeatureFlagEntity` | Feature flag configuration |
+| `FeatureFlagOverrideEntity` | Per-user flag override |
+
+#### Repository Interfaces
+
+| Interface | Methods |
+|-----------|---------|
+| `ExperimentRepository` | `create`, `get_by_id`, `update`, `get_variants`, `get_assignment`, `create_assignment`, `get_assignments_by_variant` |
+| `EventRepository` | `create`, `list`, `get_events_for_user_after` |
+| `FeatureFlagRepository` | `create`, `get_by_key`, `list_all`, `update`, `delete`, `get_user_override`, `set_user_override`, `delete_user_override` |
+
+#### Benefits
+
+1. **Database Independence**: Routers don't know about SQLAlchemy
+2. **Testability**: Can inject mock repositories for unit testing
+3. **Flexibility**: Easy to swap implementations (SQLite → PostgreSQL)
+4. **Separation of Concerns**: Business logic separate from data access
+5. **Type Safety**: Interfaces define clear contracts
+
+#### Dependency Injection
+
+FastAPI's `Depends()` is used to inject repository instances:
+
+```python
+@router.get("/{experiment_id}")
+def get_experiment(
+    experiment_id: int,
+    repo: ExperimentRepository = Depends(get_experiment_repository),
+):
+    entity = repo.get_by_id(experiment_id)
+    ...
+```
 
 ### Database Schema Design
 
@@ -145,7 +237,9 @@ If I were to add one feature next, it would be **real-time event streaming for r
 3. **Date Range Filtering**: Filter results by time period
 4. **Event Type Filtering**: Focus analysis on specific event types
 5. **Events by Type Breakdown**: Detailed event type counts per variant
-6. **Unit Tests**: Comprehensive test coverage for critical paths (23 tests)
+6. **Comprehensive Testing**:
+   - 58 unit tests (97% code coverage)
+   - 16 integration tests (full workflow testing)
 7. **Feature Flags**: Complete feature flagging system with:
    - Global enable/disable
    - Percentage-based rollout using deterministic hashing
@@ -155,3 +249,12 @@ If I were to add one feature next, it would be **real-time event streaming for r
    - User assignments (5 minute TTL)
    - Feature flag evaluations (1 minute TTL)
    - Automatic cache invalidation on updates
+9. **Repository Pattern**: Clean architecture with:
+   - Abstract repository interfaces
+   - Database-agnostic entity classes
+   - SQLAlchemy implementations
+   - Dependency injection for testability
+10. **Full Docker Containerization**:
+    - Production, development, and test profiles
+    - No local Python environment required
+    - Integration tests run in containers
