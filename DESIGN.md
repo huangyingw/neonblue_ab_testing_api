@@ -230,6 +230,97 @@ If I were to add one feature next, it would be **real-time event streaming for r
 - Reduced database load from repeated result queries
 - Better stakeholder experience with live monitoring
 
+## Test Isolation Architecture
+
+A key architectural decision is the complete isolation of tests from any real environment.
+
+### The Problem with Traditional Testing
+
+Typical approaches to testing database-backed applications:
+1. **Use test database**: Creates `test.db`, slower I/O, requires cleanup
+2. **Use in-memory SQLite**: Still database-bound, can't run in parallel safely
+3. **Mock at ORM level**: Brittle, tightly coupled to ORM internals
+
+### Our Solution: Mock Repositories
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       Production                             │
+├─────────────────────────────────────────────────────────────┤
+│  FastAPI  →  Repository Interface  →  SQLAlchemy Impl       │
+│                                            ↓                 │
+│                                      [SQLite/PostgreSQL]     │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                        Testing                               │
+├─────────────────────────────────────────────────────────────┤
+│  FastAPI  →  Repository Interface  →  Mock Impl             │
+│                                            ↓                 │
+│                                    [In-Memory Dict]          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Mock Repository Implementation
+
+```python
+class MockExperimentRepository(ExperimentRepository):
+    """In-memory mock - no database connection."""
+
+    def __init__(self):
+        self._experiments: dict[int, ExperimentEntity] = {}
+        self._next_id = 1
+
+    def reset(self):
+        """Called before each test for isolation."""
+        self._experiments.clear()
+        self._next_id = 1
+
+    def create(self, data: ExperimentInput) -> ExperimentEntity:
+        entity = ExperimentEntity(id=self._next_id, ...)
+        self._experiments[entity.id] = entity
+        self._next_id += 1
+        return entity
+```
+
+### Test Setup
+
+```python
+# Override dependencies with mocks
+app.dependency_overrides[get_experiment_repository] = lambda: mock_experiment_repo
+app.dependency_overrides[get_event_repository] = lambda: mock_event_repo
+app.dependency_overrides[get_feature_flag_repository] = lambda: mock_feature_flag_repo
+
+@pytest.fixture(autouse=True)
+def reset_mocks():
+    """Each test starts with fresh state."""
+    mock_experiment_repo.reset()
+    mock_event_repo.reset()
+    mock_feature_flag_repo.reset()
+    cache.clear()
+    yield
+```
+
+### Benefits
+
+| Aspect | Result |
+|--------|--------|
+| **No database files** | No `test.db` created, zero pollution |
+| **Fast execution** | 58 tests in ~5 seconds (no I/O) |
+| **Parallel safe** | Each test has isolated in-memory state |
+| **Easy debugging** | Mock state is inspectable Python dicts |
+| **Portable** | Tests run anywhere Python runs |
+
+### Test Coverage
+
+| Type | Count | Purpose |
+|------|-------|---------|
+| Unit tests | 58 | Component logic via mock repositories |
+| Integration tests | 16 | Full API flow against real server |
+| Cache tests | 13 | Cache module in isolation |
+
+---
+
 ## Additional Features Implemented
 
 1. **Statistical Significance**: Chi-square test for comparing variant performance
@@ -238,8 +329,9 @@ If I were to add one feature next, it would be **real-time event streaming for r
 4. **Event Type Filtering**: Focus analysis on specific event types
 5. **Events by Type Breakdown**: Detailed event type counts per variant
 6. **Comprehensive Testing**:
-   - 58 unit tests (97% code coverage)
+   - 58 unit tests with mock repositories
    - 16 integration tests (full workflow testing)
+   - Complete test isolation (no database pollution)
 7. **Feature Flags**: Complete feature flagging system with:
    - Global enable/disable
    - Percentage-based rollout using deterministic hashing
@@ -252,8 +344,9 @@ If I were to add one feature next, it would be **real-time event streaming for r
 9. **Repository Pattern**: Clean architecture with:
    - Abstract repository interfaces
    - Database-agnostic entity classes
-   - SQLAlchemy implementations
-   - Dependency injection for testability
+   - SQLAlchemy implementations for production
+   - Mock implementations for testing
+   - Dependency injection via FastAPI
 10. **Full Docker Containerization**:
     - Production, development, and test profiles
     - No local Python environment required
