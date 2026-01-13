@@ -11,6 +11,11 @@ rectangle "app/" as App #LightBlue {
     rectangle "Entry Point" as Entry #LightGreen {
         [main.py] as Main
         [dependencies.py] as Deps
+        note right of Deps
+          **Dependency Injection**
+          Provides Repository
+          instances to Routers
+        end note
     }
 
     rectangle "API Routers" as Routers #LightYellow {
@@ -38,6 +43,11 @@ rectangle "app/" as App #LightBlue {
             [experiment_repo.py] as ExpImpl
             [event_repo.py] as EventImpl
             [feature_flag_repo.py] as FlagImpl
+            note bottom of SQLADir
+              **Concrete Implementations**
+              SQLAlchemy ORM queries
+              Can be swapped for other DBs
+            end note
         }
     }
 
@@ -52,7 +62,7 @@ rectangle "app/" as App #LightBlue {
     }
 }
 
-database "SQLite" as SQLite #WhiteSmoke
+database "PostgreSQL" as PG #WhiteSmoke
 
 ' Entry point connections
 Main --> ExpR
@@ -89,7 +99,7 @@ FlagR --> Schemas
 
 ' Data layer connections
 Models --> DB
-DB --> SQLite
+DB --> PG
 DB --> Conf
 Auth --> Conf
 

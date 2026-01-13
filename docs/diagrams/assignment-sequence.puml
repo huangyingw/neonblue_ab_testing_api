@@ -17,7 +17,7 @@ participant "Auth" as Auth
 participant "Cache" as Cache
 participant "ExperimentRepository\n(interface)" as Repo
 participant "SQLAlchemy\nImplementation" as Impl
-database "SQLite" as DB
+database "PostgreSQL" as DB
 
 == First Request ==
 

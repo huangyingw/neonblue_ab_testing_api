@@ -51,13 +51,15 @@ node "Docker Compose Environment" as DockerEnv {
 
         node "test container" as TestContainer {
             artifact "pytest" as Pytest
-            artifact "Mock Repositories" as MockRepo
+            artifact "pytest-cov" as PytestCov
         }
 
-        note right of MockRepo
-          Unit tests use
-          mock repositories
-          (no DB access)
+        TestContainer --> TestDBContainer : "DATABASE_URL"
+
+        note right of TestContainer
+          Unit tests run against
+          isolated test database
+          with coverage report
         end note
     }
 

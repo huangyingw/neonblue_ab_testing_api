@@ -9,33 +9,43 @@ skinparam sequence {
     ParticipantBorderColor DarkOrange
 }
 
-title Experiment Results Calculation Flow
+title Experiment Results Calculation Flow (Repository Pattern)
 
 actor Client
-participant "FastAPI" as API
+participant "Router\n(experiments.py)" as Router
 participant "Auth" as Auth
-participant "Experiments\nRouter" as Router
-participant "Statistics\nService" as Stats
-database "SQLite" as DB
+participant "ExperimentRepository\n(interface)" as ExpRepo
+participant "EventRepository\n(interface)" as EventRepo
+participant "SQLAlchemy\nImplementation" as Impl
+participant "Statistics\n(scipy)" as Stats
+database "PostgreSQL" as DB
 
-Client -> API : GET /experiments/{id}/results\n?event_type=purchase\n&start_date=...\n&end_date=...
-API -> Auth : Validate token
-Auth --> API : Token valid
+Client -> Router : GET /experiments/{id}/results\n?event_type=purchase\n&start_date=...\n&end_date=...
+Router -> Auth : Validate token
+Auth --> Router : Token valid
 
-API -> Router : Get results
-Router -> DB : Query experiment
-DB --> Router : Experiment data
-
-Router -> DB : Query variants
-DB --> Router : Variants list
+Router -> ExpRepo : get_by_id(experiment_id)
+ExpRepo -> Impl : get_by_id()
+Impl -> DB : SELECT experiment + variants
+DB --> Impl : Experiment data
+Impl --> ExpRepo : ExperimentEntity
+ExpRepo --> Router : ExperimentEntity
 
 loop For each variant
-    Router -> DB : Query assignments\nfor variant
-    DB --> Router : Assignments
+    Router -> ExpRepo : get_assignments_by_variant(variant_id)
+    ExpRepo -> Impl : get_assignments_by_variant()
+    Impl -> DB : SELECT assignments
+    DB --> Impl : Assignments list
+    Impl --> ExpRepo : list[AssignmentEntity]
+    ExpRepo --> Router : list[AssignmentEntity]
 
     loop For each assignment
-        Router -> DB : Query events\nWHERE user_id = assignment.user_id\nAND timestamp > assignment.assigned_at\nAND event_type = filter (optional)\nAND timestamp BETWEEN start/end
-        DB --> Router : User events
+        Router -> EventRepo : get_events_for_user_after(\n  user_id,\n  after=assigned_at,\n  event_type,\n  start_date,\n  end_date)
+        EventRepo -> Impl : get_events_for_user_after()
+        Impl -> DB : SELECT events\nWHERE user_id = ?\nAND timestamp > assigned_at\nAND event_type = ? (optional)\nAND timestamp BETWEEN ? AND ?
+        DB --> Impl : User events
+        Impl --> EventRepo : list[EventEntity]
+        EventRepo --> Router : list[EventEntity]
     end
 
     Router --> Router : Calculate:\n- user_count\n- event_count\n- conversion_rate\n- events_by_type
@@ -46,9 +56,14 @@ Stats --> Stats : Build contingency table\n[[users_with_events, users_without], 
 Stats --> Stats : scipy.stats.chi2_contingency()
 Stats --> Router : chi2, p_value, is_significant
 
-Router --> API : ExperimentResults
+Router --> Client : 200 OK\n{\n  "total_users": 100,\n  "variants": [...],\n  "statistical_significance": {\n    "p_value": 0.03,\n    "is_significant": true\n  }\n}
 
-API --> Client : 200 OK\n{\n  "total_users": 100,\n  "variants": [...],\n  "statistical_significance": {\n    "p_value": 0.03,\n    "is_significant": true\n  }\n}
+note right of ExpRepo
+  **Repository Pattern:**
+  - ExperimentRepository: experiments, variants, assignments
+  - EventRepository: events
+  - No direct DB access in Router
+end note
 
 note right of Router
   Only events AFTER
