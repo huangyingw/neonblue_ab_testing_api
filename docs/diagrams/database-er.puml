@@ -110,4 +110,26 @@ note right of events
   (not FK for flexibility)
 end note
 
+note left of experiments
+  **Status values:**
+  - draft
+  - running
+  - stopped
+  - completed
+end note
+
+note left of variants
+  **Traffic allocation:**
+  Sum of all variants'
+  traffic_percentage = 100%
+end note
+
+note right of feature_flags
+  **Evaluation priority:**
+  1. user_override
+  2. enabled (global)
+  3. rollout_percentage
+  4. disabled (default)
+end note
+
 @enduml

@@ -140,4 +140,17 @@ note bottom of RepoDir
   - Dependency injection via dependencies.py
 end note
 
+note right of Data
+  **Data Layer:**
+  - models.py: SQLAlchemy ORM
+  - schemas.py: Pydantic validation
+  - database.py: DB connection pool
+end note
+
+note right of Services
+  **Core Services:**
+  - auth.py: Bearer token validation
+  - cache.py: In-memory TTL cache
+end note
+
 @enduml

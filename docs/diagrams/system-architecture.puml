@@ -111,4 +111,19 @@ note right of Cache
   for frequent calls
 end note
 
+note left of Auth
+  **Authentication:**
+  All endpoints require
+  Bearer token in header
+
+  Authorization: Bearer <token>
+end note
+
+note bottom of DB
+  **PostgreSQL 16:**
+  - Connection pooling
+  - Persistent volume
+  - Health checks
+end note
+
 @enduml

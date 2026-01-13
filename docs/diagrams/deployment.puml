@@ -118,4 +118,18 @@ note right of Prod
   - Persistent volume
 end note
 
+note right of Dev
+  **Development Features:**
+  - Hot reload (--reload)
+  - Source code mounted
+  - Same DB as production
+end note
+
+note right of Integration
+  **Integration Tests:**
+  - Real API server
+  - HTTP requests
+  - End-to-end validation
+end note
+
 @enduml
