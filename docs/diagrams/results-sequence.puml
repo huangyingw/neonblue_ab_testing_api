@@ -1,5 +1,29 @@
 @startuml Results Calculation
 
+' ============================================================================
+' Experiment Results Calculation Sequence Diagram
+' ============================================================================
+' This diagram shows how experiment results are calculated and returned.
+'
+' Endpoint: GET /experiments/{id}/results
+' Optional query params: event_type, start_date, end_date
+'
+' Calculation process:
+' 1. Get experiment and all variants
+' 2. For each variant, get all user assignments
+' 3. For each user, get events AFTER their assignment timestamp
+'    (ensures we only count post-assignment behavior)
+' 4. Calculate per-variant metrics: user_count, event_count, conversion_rate
+' 5. Run chi-square statistical significance test
+'
+' Statistical significance:
+' - Uses scipy.stats.chi2_contingency()
+' - Compares conversion rates across variants
+' - p_value < 0.05 indicates statistically significant difference
+'
+' Note: This endpoint is NOT cached due to dynamic nature of results
+' ============================================================================
+
 skinparam backgroundColor white
 skinparam sequence {
     ArrowColor DarkOrange

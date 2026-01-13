@@ -1,5 +1,25 @@
 @startuml API Components
 
+' ============================================================================
+' API Components Diagram
+' ============================================================================
+' This diagram shows the internal code structure of the A/B Testing API.
+'
+' Architecture follows the Repository Pattern:
+' - Routers (API endpoints) depend on abstract Repository interfaces
+' - dependencies.py provides concrete implementations via dependency injection
+' - This allows easy testing and database swapping
+'
+' Key modules:
+' - main.py: FastAPI app entry point, registers routers
+' - dependencies.py: Dependency injection, provides Repository instances
+' - routers/: API endpoint handlers (/experiments, /events, /flags)
+' - repositories/interfaces.py: Abstract contracts + Entity classes
+' - repositories/sqlalchemy/: PostgreSQL implementations using SQLAlchemy
+' - models.py: SQLAlchemy ORM models
+' - schemas.py: Pydantic request/response schemas
+' ============================================================================
+
 skinparam backgroundColor white
 skinparam defaultFontSize 12
 skinparam rectangleBorderColor #333333

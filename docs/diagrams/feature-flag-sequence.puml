@@ -1,5 +1,26 @@
 @startuml Feature Flag Evaluation
 
+' ============================================================================
+' Feature Flag Evaluation Sequence Diagram
+' ============================================================================
+' This diagram shows the flow when evaluating a feature flag for a user.
+'
+' Endpoint: GET /flags/{key}/evaluate/{user_id}
+'
+' Evaluation priority (highest to lowest):
+' 1. User Override: If user has a specific override, use it
+' 2. Global Enable: If flag.enabled=true, return enabled
+' 3. Rollout Percentage: Use deterministic hash (MD5) to decide
+' 4. Disabled: Default state if none of above match
+'
+' Deterministic hashing ensures:
+' - Same user always gets same result for same flag
+' - Consistent rollout without storing per-user state
+' - Hash formula: MD5(key:user_id) % 100 < rollout_percentage
+'
+' Caching: Results cached for 1 minute to reduce DB load
+' ============================================================================
+
 skinparam backgroundColor white
 skinparam sequence {
     ArrowColor DarkGreen

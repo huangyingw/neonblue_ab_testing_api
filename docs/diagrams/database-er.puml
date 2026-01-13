@@ -1,5 +1,23 @@
 @startuml Database ER Diagram
 
+' ============================================================================
+' Database Entity-Relationship Diagram
+' ============================================================================
+' This diagram shows the database schema for the A/B Testing API.
+'
+' Tables:
+' - experiments: A/B test definitions with name, description, status
+' - variants: Different versions in an experiment (e.g., Control, Treatment)
+' - assignments: Maps users to variants (idempotent, one per user per experiment)
+' - events: User actions/conversions with flexible JSON properties
+' - feature_flags: Simple on/off toggles with rollout percentage
+' - feature_flag_overrides: Per-user overrides for feature flags
+'
+' Key constraints:
+' - assignments: UNIQUE(experiment_id, user_id) ensures idempotency
+' - feature_flag_overrides: UNIQUE(feature_flag_id, user_id) one override per user
+' ============================================================================
+
 !define TABLE(x) entity x << (T,#FFAAAA) >>
 !define PK(x) <u>x</u>
 !define FK(x) <i>x</i>
@@ -10,7 +28,7 @@ skinparam entity {
     BorderColor DarkOrange
 }
 
-title A/B Testing API - Database Schema
+title A/B Testing API - Database Schema (PostgreSQL)
 
 TABLE(experiments) {
     PK(id) : INTEGER

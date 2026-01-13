@@ -1,5 +1,20 @@
 @startuml Deployment Architecture
 
+' ============================================================================
+' Deployment Architecture Diagram
+' ============================================================================
+' This diagram shows how the A/B Testing API is deployed using Docker Compose.
+'
+' Four deployment profiles:
+' 1. Production (default): api + db containers, production-ready settings
+' 2. Development (--profile dev): Hot reload enabled for rapid development
+' 3. Test (--profile test): Isolated db-test for unit tests with coverage
+' 4. Integration (--profile integration): Full API + test runner for E2E tests
+'
+' All profiles use PostgreSQL 16 (Alpine) for the database.
+' Each profile has its own isolated database to prevent data conflicts.
+' ============================================================================
+
 skinparam backgroundColor white
 skinparam node {
     BackgroundColor LightSteelBlue

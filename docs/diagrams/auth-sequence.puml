@@ -1,0 +1,98 @@
+@startuml Authentication Flow
+
+' ============================================================================
+' Authentication Flow Diagram
+' ============================================================================
+' This diagram shows how Bearer Token authentication works in the API.
+' All endpoints (except /health) require a valid token in the Authorization header.
+' ============================================================================
+
+skinparam backgroundColor white
+skinparam sequence {
+    ArrowColor DarkRed
+    ActorBorderColor DarkRed
+    LifeLineBorderColor DarkRed
+    ParticipantBackgroundColor MistyRose
+    ParticipantBorderColor DarkRed
+}
+
+title Bearer Token Authentication Flow
+
+actor "API Client" as Client
+participant "FastAPI\nMiddleware" as API
+participant "HTTPBearer\n(FastAPI Security)" as Bearer
+participant "verify_token()\n(auth.py)" as Auth
+participant "Settings\n(config.py)" as Config
+participant "Router\nEndpoint" as Router
+
+' ============================================================================
+' Successful Authentication
+' ============================================================================
+== Successful Authentication ==
+
+Client -> API : Request with header:\nAuthorization: Bearer <token>
+
+API -> Bearer : Extract token from header
+Bearer -> Bearer : Validate header format\n"Bearer <token>"
+
+alt Invalid Header Format
+    Bearer --> Client : 403 Forbidden\n"Not authenticated"
+else Valid Format
+    Bearer -> Auth : verify_token(token)
+
+    Auth -> Config : Get API_TOKENS\nfrom environment
+    Config --> Auth : ["test-token-123", "test-token-456"]
+
+    Auth -> Auth : Check if token in valid_tokens
+
+    alt Token Valid
+        Auth --> Bearer : Return token (success)
+        Bearer --> API : Token validated
+        API -> Router : Process request
+        Router --> Client : 200 OK (response data)
+    else Token Invalid
+        Auth --> Client : 401 Unauthorized\n"Invalid authentication token"
+    end
+end
+
+' ============================================================================
+' Missing Token
+' ============================================================================
+== Missing Token ==
+
+Client -> API : Request without\nAuthorization header
+API -> Bearer : No token found
+Bearer --> Client : 403 Forbidden\n"Not authenticated"
+
+' ============================================================================
+' Notes
+' ============================================================================
+
+note right of Config
+  **Token Configuration:**
+  Environment variable: API_TOKENS
+  Default: ["test-token-123", "test-token-456"]
+
+  Format: JSON array of strings
+  Set in docker-compose.yml
+end note
+
+note right of Auth
+  **Security Features:**
+  - Simple token comparison
+  - No token expiration (stateless)
+  - Multiple valid tokens supported
+
+  **For Production:**
+  - Use JWT tokens
+  - Add token expiration
+  - Implement refresh tokens
+end note
+
+note bottom of Client
+  **Usage Example:**
+  curl -H "Authorization: Bearer test-token-123" \
+       http://localhost:8000/experiments
+end note
+
+@enduml

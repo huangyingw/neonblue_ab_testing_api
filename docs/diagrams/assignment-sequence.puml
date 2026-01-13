@@ -1,5 +1,25 @@
 @startuml Assignment Sequence
 
+' ============================================================================
+' User Assignment Sequence Diagram
+' ============================================================================
+' This diagram shows the flow when a user requests a variant assignment.
+'
+' Key features:
+' - Idempotency: Same user always gets the same variant (via DB unique constraint)
+' - Caching: Subsequent requests are served from cache (TTL: 5 minutes)
+' - Weighted random: Variants selected based on traffic_percentage
+'
+' Endpoint: GET /experiments/{id}/assignment/{user_id}
+'
+' First request flow:
+' 1. Check cache (miss) -> Query existing assignment (not found)
+' 2. Get variants -> Weighted random selection -> Create assignment
+' 3. Store in cache -> Return response
+'
+' Subsequent requests: Cache hit -> Return immediately (idempotent)
+' ============================================================================
+
 skinparam backgroundColor white
 skinparam sequence {
     ArrowColor DarkBlue

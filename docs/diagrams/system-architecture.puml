@@ -1,5 +1,19 @@
 @startuml System Architecture
 
+' ============================================================================
+' System Architecture Diagram
+' ============================================================================
+' This diagram shows the high-level architecture of the A/B Testing API.
+'
+' Key components:
+' - Clients: Web apps, mobile apps, CLI tools connect via HTTPS
+' - Authentication: Bearer token validation for all protected endpoints
+' - API Routers: Handle /experiments, /events, /flags endpoints
+' - Caching: In-memory cache reduces database load
+' - Repository Layer: Abstracts database access (Repository Pattern)
+' - PostgreSQL: Persistent storage for all data
+' ============================================================================
+
 skinparam backgroundColor white
 skinparam defaultFontSize 12
 

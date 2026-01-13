@@ -1,0 +1,135 @@
+@startuml Cache Strategy
+
+' ============================================================================
+' Cache Strategy Diagram
+' ============================================================================
+' This diagram shows the in-memory caching strategy used in the API.
+' Cache is used to reduce database queries for frequently accessed data.
+' ============================================================================
+
+skinparam backgroundColor white
+skinparam defaultFontSize 11
+
+title In-Memory Cache Strategy
+
+' ============================================================================
+' Cache Component
+' ============================================================================
+
+rectangle "Cache Module (cache.py)" as CacheModule #LightBlue {
+
+    rectangle "Cache Class" as CacheClass #LightGreen {
+        [Thread-safe Lock] as Lock
+        [_cache: dict] as Storage
+        [default_ttl: 300s] as TTL
+    }
+
+    rectangle "Methods" as Methods #LightYellow {
+        [get(key)] as Get
+        [set(key, value, ttl)] as Set
+        [delete(key)] as Delete
+        [clear()] as Clear
+        [invalidate_pattern(prefix)] as Invalidate
+    }
+
+    rectangle "Cache Keys" as Keys #LightPink {
+        [CACHE_KEY_ASSIGNMENT\n"assignment:{exp_id}:{user_id}"] as AssignKey
+        [CACHE_KEY_FEATURE_FLAG\n"feature_flag:{key}"] as FlagKey
+        [CACHE_KEY_FLAG_EVALUATION\n"flag_eval:{key}:{user_id}"] as EvalKey
+    }
+}
+
+' ============================================================================
+' Cache Usage Flow
+' ============================================================================
+
+rectangle "Cache Usage" as Usage #Wheat {
+
+    rectangle "Assignment Caching" as AssignCache #PaleGreen {
+        note as AssignNote
+          **Read Flow:**
+          1. Check cache: assignment:{exp_id}:{user_id}
+          2. If hit -> return cached response
+          3. If miss -> query DB -> cache result (TTL: 5min)
+
+          **Invalidation:**
+          Never invalidated (assignments are permanent)
+        end note
+    }
+
+    rectangle "Feature Flag Caching" as FlagCache #PaleTurquoise {
+        note as FlagNote
+          **Read Flow:**
+          1. Check cache: feature_flag:{key}
+          2. If hit -> return cached response
+          3. If miss -> query DB -> cache result (TTL: 1min)
+
+          **Invalidation:**
+          - On flag update: invalidate_pattern("feature_flag:{key}")
+          - On flag delete: invalidate_pattern("feature_flag:{key}")
+        end note
+    }
+
+    rectangle "Flag Evaluation Caching" as EvalCache #Lavender {
+        note as EvalNote
+          **Read Flow:**
+          1. Check cache: flag_eval:{key}:{user_id}
+          2. If hit -> return cached evaluation
+          3. If miss -> evaluate -> cache result (TTL: 1min)
+
+          **Invalidation:**
+          - On flag update: invalidate_pattern("flag_eval:{key}:")
+          - On override create: delete("flag_eval:{key}:{user_id}")
+          - On override delete: delete("flag_eval:{key}:{user_id}")
+        end note
+    }
+}
+
+' ============================================================================
+' TTL Expiration Flow
+' ============================================================================
+
+rectangle "TTL Expiration" as TTLFlow #MistyRose {
+    note as TTLNote
+      **Automatic Expiration:**
+      Each cache entry stores: (value, expires_at)
+
+      On get():
+      1. Check if current_time > expires_at
+      2. If expired -> delete entry -> return None
+      3. If valid -> return value
+
+      **No background cleanup:**
+      Expired entries are removed on next access
+    end note
+}
+
+' ============================================================================
+' Connections
+' ============================================================================
+
+CacheClass --> Methods
+Methods --> Keys
+
+' ============================================================================
+' Summary Note
+' ============================================================================
+
+note bottom of CacheModule
+  **Cache Benefits:**
+  - Reduces database load for repeated queries
+  - Fast response for idempotent operations
+  - Thread-safe for concurrent access
+
+  **Cache Limitations:**
+  - In-memory only (lost on restart)
+  - Single instance (no distributed caching)
+  - Manual invalidation required on updates
+
+  **For Production:**
+  - Use Redis for distributed caching
+  - Add cache warming on startup
+  - Monitor cache hit/miss rates
+end note
+
+@enduml
