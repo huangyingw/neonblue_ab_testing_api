@@ -23,14 +23,14 @@ The application uses the Repository pattern to abstract data access, providing a
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      API Layer (Routers)                     │
-│  experiments.py │ events.py │ feature_flags.py              │
+│  experiments.py │ events.py │ feature_flags.py │ api_tokens │
 └─────────────────────────────────────────────────────────────┘
                               │
                               │ Depends on interfaces only
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   Repository Interfaces                      │
-│  ExperimentRepository │ EventRepository │ FeatureFlagRepo   │
+│  ExperimentRepo │ EventRepo │ FeatureFlagRepo │ ApiTokenRepo│
 └─────────────────────────────────────────────────────────────┘
                               │
                               │ Implementations
@@ -58,8 +58,13 @@ app/
 │       ├── __init__.py
 │       ├── experiment_repo.py  # SQLAlchemy implementation
 │       ├── event_repo.py
-│       └── feature_flag_repo.py
+│       ├── feature_flag_repo.py
+│       └── api_token_repo.py   # Token storage with SHA256 hashing
 └── routers/                    # API endpoints (depend on interfaces)
+    ├── experiments.py
+    ├── events.py
+    ├── feature_flags.py
+    └── api_tokens.py           # Token management endpoints
 ```
 
 #### Entity Classes
@@ -83,7 +88,7 @@ Database-agnostic data structures (pure Python dataclasses):
 | `ExperimentRepository` | `create`, `get_by_id`, `update`, `get_variants`, `get_assignment`, `create_assignment`, `get_assignments_by_variant` |
 | `EventRepository` | `create`, `list`, `get_events_for_user_after` |
 | `FeatureFlagRepository` | `create`, `get_by_key`, `list_all`, `update`, `delete`, `get_user_override`, `set_user_override`, `delete_user_override` |
-| `ApiTokenRepository` | `create`, `get_by_hash`, `list_all`, `delete`, `deactivate`, `update_last_used` |
+| `ApiTokenRepository` | `create`, `get_by_hash`, `get_by_id`, `list_all`, `delete`, `deactivate`, `update_last_used` |
 
 #### Benefits
 
@@ -333,8 +338,8 @@ def reset_mocks():
 4. **Event Type Filtering**: Focus analysis on specific event types
 5. **Events by Type Breakdown**: Detailed event type counts per variant
 6. **Comprehensive Testing**:
-   - 58 unit tests with mock repositories
-   - 16 integration tests (full workflow testing)
+   - 68 unit tests with mock repositories
+   - 22 integration tests (full workflow testing)
    - Complete test isolation (no database pollution)
 7. **Feature Flags**: Complete feature flagging system with:
    - Global enable/disable
