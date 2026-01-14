@@ -6,6 +6,7 @@
 ' This diagram shows the database schema for the A/B Testing API.
 '
 ' Tables:
+' - api_tokens: API authentication tokens (SHA256 hashed)
 ' - experiments: A/B test definitions with name, description, status
 ' - variants: Different versions in an experiment (e.g., Control, Treatment)
 ' - assignments: Maps users to variants (idempotent, one per user per experiment)
@@ -14,6 +15,7 @@
 ' - feature_flag_overrides: Per-user overrides for feature flags
 '
 ' Key constraints:
+' - api_tokens: UNIQUE(token_hash) for secure token lookup
 ' - assignments: UNIQUE(experiment_id, user_id) ensures idempotency
 ' - feature_flag_overrides: UNIQUE(feature_flag_id, user_id) one override per user
 ' ============================================================================
@@ -29,6 +31,19 @@ skinparam entity {
 }
 
 title A/B Testing API - Database Schema (PostgreSQL)
+
+TABLE(api_tokens) {
+    PK(id) : INTEGER
+    --
+    name : VARCHAR
+    token_hash : VARCHAR <<unique>>
+    is_active : BOOLEAN
+    created_at : DATETIME
+    expires_at : DATETIME
+    last_used_at : DATETIME
+    ==
+    INDEX(token_hash)
+}
 
 TABLE(experiments) {
     PK(id) : INTEGER
@@ -130,6 +145,14 @@ note right of feature_flags
   2. enabled (global)
   3. rollout_percentage
   4. disabled (default)
+end note
+
+note left of api_tokens
+  **Token Security:**
+  - SHA256 hashed storage
+  - Original token never stored
+  - Supports expiration
+  - Soft delete via is_active
 end note
 
 @enduml

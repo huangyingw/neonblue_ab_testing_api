@@ -5,29 +5,38 @@
 ' ============================================================================
 ' This diagram shows how Bearer Token authentication works in the API.
 ' All endpoints (except /health) require a valid token in the Authorization header.
+'
+' Token verification process:
+' 1. Extract Bearer token from Authorization header
+' 2. Hash the token using SHA256
+' 3. Look up the hash in the api_tokens table
+' 4. Validate: is_active=true, not expired
+' 5. Update last_used_at timestamp
 ' ============================================================================
 
 skinparam backgroundColor white
 skinparam sequenceArrowThickness 2
 
-title Bearer Token Authentication Flow
+title Bearer Token Authentication Flow (Database-backed)
 
 actor "API Client" as Client
 participant "FastAPI" as API
 participant "HTTPBearer" as Bearer
 participant "verify_token" as Auth
-participant "Settings" as Config
+database "PostgreSQL" as DB
 participant "Router" as Router
 
 == Successful Authentication ==
 
-Client -> API : GET /experiments\nAuthorization: Bearer test-token-123
+Client -> API : GET /experiments\nAuthorization: Bearer <token>
 API -> Bearer : Extract token
 Bearer -> Auth : verify_token(token)
-Auth -> Config : Get API_TOKENS
-Config --> Auth : valid tokens list
-Auth -> Auth : token in valid_tokens?
-Auth --> Bearer : Valid
+Auth -> Auth : hash_token(token)\n(SHA256)
+Auth -> DB : SELECT * FROM api_tokens\nWHERE token_hash = ?
+DB --> Auth : ApiToken record
+Auth -> Auth : Validate:\n- is_active = true\n- expires_at > now()
+Auth -> DB : UPDATE last_used_at
+Auth --> Bearer : Valid (ApiTokenEntity)
 Bearer --> API : Authenticated
 API -> Router : Process request
 Router --> Client : 200 OK
@@ -37,10 +46,32 @@ Router --> Client : 200 OK
 Client -> API : GET /experiments\nAuthorization: Bearer wrong-token
 API -> Bearer : Extract token
 Bearer -> Auth : verify_token(token)
-Auth -> Config : Get API_TOKENS
-Config --> Auth : valid tokens list
-Auth -> Auth : token in valid_tokens?
-Auth --> Client : 401 Unauthorized
+Auth -> Auth : hash_token(token)
+Auth -> DB : SELECT * FROM api_tokens\nWHERE token_hash = ?
+DB --> Auth : NULL (not found)
+Auth --> Client : 401 Unauthorized\n"Invalid authentication token"
+
+== Expired Token ==
+
+Client -> API : GET /experiments\nAuthorization: Bearer expired-token
+API -> Bearer : Extract token
+Bearer -> Auth : verify_token(token)
+Auth -> Auth : hash_token(token)
+Auth -> DB : SELECT * FROM api_tokens\nWHERE token_hash = ?
+DB --> Auth : ApiToken (expires_at < now)
+Auth -> Auth : expires_at < now()?
+Auth --> Client : 401 Unauthorized\n"Token has expired"
+
+== Deactivated Token ==
+
+Client -> API : GET /experiments\nAuthorization: Bearer deactivated-token
+API -> Bearer : Extract token
+Bearer -> Auth : verify_token(token)
+Auth -> Auth : hash_token(token)
+Auth -> DB : SELECT * FROM api_tokens\nWHERE token_hash = ?
+DB --> Auth : ApiToken (is_active = false)
+Auth -> Auth : is_active = false?
+Auth --> Client : 401 Unauthorized\n"Token has been deactivated"
 
 == Missing Token ==
 
@@ -48,24 +79,30 @@ Client -> API : GET /experiments\nNo Authorization header
 API -> Bearer : No token found
 Bearer --> Client : 403 Forbidden
 
-note right of Config
-  Token Configuration:
-  Env: API_TOKENS
-  Format: JSON array
-  Set in docker-compose.yml
+note right of DB
+  **api_tokens table:**
+  - id, name
+  - token_hash (SHA256)
+  - is_active
+  - created_at
+  - expires_at
+  - last_used_at
 end note
 
 note right of Auth
-  Security Features:
-  Simple token comparison
-  Stateless, no expiration
-  Multiple tokens supported
+  **Security Features:**
+  - SHA256 hash comparison
+  - Token expiration support
+  - Soft delete (is_active)
+  - Usage tracking
 end note
 
 note left of Client
-  Usage:
-  curl with Authorization header
-  Bearer token required
+  **Token Management:**
+  POST /tokens - Create new
+  GET /tokens - List all
+  DELETE /tokens/{id} - Remove
+  POST /tokens/{id}/deactivate
 end note
 
 @enduml

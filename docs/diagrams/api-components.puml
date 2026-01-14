@@ -11,12 +11,12 @@
 ' - This allows easy testing and database swapping
 '
 ' Key modules:
-' - main.py: FastAPI app entry point, registers routers
+' - main.py: FastAPI app entry point, registers routers, bootstraps initial token
 ' - dependencies.py: Dependency injection, provides Repository instances
-' - routers/: API endpoint handlers (/experiments, /events, /flags)
+' - routers/: API endpoint handlers (/experiments, /events, /flags, /tokens)
 ' - repositories/interfaces.py: Abstract contracts + Entity classes
 ' - repositories/sqlalchemy/: PostgreSQL implementations using SQLAlchemy
-' - models.py: SQLAlchemy ORM models
+' - models.py: SQLAlchemy ORM models (including ApiToken)
 ' - schemas.py: Pydantic request/response schemas
 ' ============================================================================
 
@@ -42,6 +42,7 @@ rectangle "app/" as App #LightBlue {
         [experiments.py] as ExpR
         [events.py] as EventR
         [feature_flags.py] as FlagR
+        [api_tokens.py] as TokenR
     }
 
     rectangle "Core Services" as Services #LightPink {
@@ -63,6 +64,7 @@ rectangle "app/" as App #LightBlue {
             [experiment_repo.py] as ExpImpl
             [event_repo.py] as EventImpl
             [feature_flag_repo.py] as FlagImpl
+            [api_token_repo.py] as TokenImpl
             note bottom of SQLADir
               **Concrete Implementations**
               SQLAlchemy ORM queries
@@ -88,11 +90,13 @@ database "PostgreSQL" as PG #WhiteSmoke
 Main --> ExpR
 Main --> EventR
 Main --> FlagR
+Main --> TokenR
 
 ' Router dependencies
 ExpR --> Auth
 EventR --> Auth
 FlagR --> Auth
+TokenR --> Auth
 
 ExpR --> Cache
 FlagR --> Cache
@@ -101,21 +105,25 @@ FlagR --> Cache
 ExpR --> Deps
 EventR --> Deps
 FlagR --> Deps
+TokenR --> Deps
 
 Deps --> IRepo : provides
 Deps --> ExpImpl
 Deps --> EventImpl
 Deps --> FlagImpl
+Deps --> TokenImpl
 
 ' Implementations use Models
 ExpImpl --> Models
 EventImpl --> Models
 FlagImpl --> Models
+TokenImpl --> Models
 
 ' Routers use Schemas
 ExpR --> Schemas
 EventR --> Schemas
 FlagR --> Schemas
+TokenR --> Schemas
 
 ' Data layer connections
 Models --> DB
@@ -128,6 +136,7 @@ note right of Routers
   /experiments/*
   /events/*
   /flags/*
+  /tokens/*
 
   Depend on interfaces
   not implementations
@@ -149,7 +158,8 @@ end note
 
 note right of Services
   **Core Services:**
-  - auth.py: Bearer token validation
+  - auth.py: Database token auth
+    (SHA256 hash verification)
   - cache.py: In-memory TTL cache
 end note
 
