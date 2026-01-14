@@ -56,7 +56,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://abtest:abtest123@db-test:5432/ab_testing_test
       - BOOTSTRAP_TOKEN=test-token-for-unit-tests
-    command: pytest tests/test_api.py tests/test_cache.py -v --cov=app --cov-report=term-missing
+    command: pytest tests/test_api.py tests/test_cache.py tests/test_token_cache.py -v --cov=app --cov-report=term-missing
     depends_on:
       db-test:
         condition: service_healthy

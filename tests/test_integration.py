@@ -629,3 +629,78 @@ class TestApiTokenManagement:
 
         # Clean up
         client.delete(f"/tokens/{token_id}", headers=AUTH_HEADER)
+
+    def test_multiple_requests_with_same_token(self, client, wait_for_api):
+        """Test that multiple requests with the same token work (cache behavior)."""
+        # Make many rapid requests with the same token
+        # All should succeed, demonstrating cache is working
+        for i in range(10):
+            response = client.get("/health")
+            assert response.status_code == 200
+
+            # Also test authenticated endpoint
+            response = client.get("/tokens", headers=AUTH_HEADER)
+            assert response.status_code == 200
+
+    def test_cache_invalidation_on_deactivate(self, client, wait_for_api):
+        """Test that token cache is invalidated immediately on deactivation."""
+        # Create a new token
+        create_response = client.post(
+            "/tokens",
+            headers=AUTH_HEADER,
+            json={"name": "Cache Test Token"},
+        )
+        token_data = create_response.json()
+        new_token = token_data["token"]
+        token_id = token_data["id"]
+        new_auth = {"Authorization": f"Bearer {new_token}"}
+
+        # Make several requests to populate cache
+        for _ in range(5):
+            response = client.get("/tokens", headers=new_auth)
+            assert response.status_code == 200
+
+        # Deactivate the token
+        deactivate_response = client.post(
+            f"/tokens/{token_id}/deactivate",
+            headers=AUTH_HEADER,
+        )
+        assert deactivate_response.status_code == 200
+
+        # Immediately try to use the deactivated token
+        # Should fail even though it was recently cached
+        response = client.get("/tokens", headers=new_auth)
+        assert response.status_code == 401
+
+        # Clean up
+        client.delete(f"/tokens/{token_id}", headers=AUTH_HEADER)
+
+    def test_cache_invalidation_on_delete(self, client, wait_for_api):
+        """Test that token cache is invalidated immediately on deletion."""
+        # Create a new token
+        create_response = client.post(
+            "/tokens",
+            headers=AUTH_HEADER,
+            json={"name": "Delete Cache Test Token"},
+        )
+        token_data = create_response.json()
+        new_token = token_data["token"]
+        token_id = token_data["id"]
+        new_auth = {"Authorization": f"Bearer {new_token}"}
+
+        # Make several requests to populate cache
+        for _ in range(5):
+            response = client.get("/tokens", headers=new_auth)
+            assert response.status_code == 200
+
+        # Delete the token
+        delete_response = client.delete(
+            f"/tokens/{token_id}",
+            headers=AUTH_HEADER,
+        )
+        assert delete_response.status_code == 204
+
+        # Immediately try to use the deleted token
+        # Should fail even though it was recently cached
+        response = client.get("/tokens", headers=new_auth)
+        assert response.status_code == 401
