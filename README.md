@@ -10,9 +10,10 @@ A production-ready experimentation platform API for managing A/B tests, user ass
 |--------|---------------|----------------|
 | **Architecture** | Repository Pattern | Decouples business logic from data access; enables easy database swapping |
 | **Test Isolation** | Mock Repositories | Tests run without database; fully isolated, no environment pollution |
-| **Test Coverage** | 58 unit + 16 integration tests | Comprehensive coverage with fast execution |
+| **Test Coverage** | 68 unit + 22 integration tests | Comprehensive coverage with fast execution |
 | **Data Layer** | Abstract Interfaces + SQLAlchemy | Database-agnostic entities; clear contracts |
 | **Database** | PostgreSQL with connection pooling | Production-grade persistence with optimal performance |
+| **Authentication** | Database-stored tokens with cache | Secure SHA256 hashing; cache-first verification |
 | **Containerization** | Full Docker support | Production, dev, test profiles; no local setup needed |
 | **Statistics** | Chi-square significance | Real statistical rigor for experiment analysis |
 
@@ -27,7 +28,7 @@ A production-ready experimentation platform API for managing A/B tests, user ass
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │              Repository Interfaces (Abstract)               │
-│   ExperimentRepository │ EventRepository │ FeatureFlagRepo  │
+│  ExperimentRepo │ EventRepo │ FeatureFlagRepo │ ApiTokenRepo│
 └─────────────────────────────────────────────────────────────┘
              │                                    │
      ┌───────┴───────┐                    ┌──────┴──────┐
@@ -81,7 +82,8 @@ def reset_mocks():
 - Experiment results with statistical significance calculation
 - **Feature flags** with rollout percentages and user overrides
 - **In-memory caching** with TTL for performance
-- Bearer token authentication
+- **API token management** with database storage and SHA256 hashing
+- **Token caching** for high-performance authentication
 - **PostgreSQL database** with connection pooling
 - Full Docker containerization
 
@@ -119,10 +121,47 @@ Interactive API documentation is available at:
 All endpoints (except `/health`) require Bearer token authentication:
 
 ```bash
-curl -H "Authorization: Bearer test-token-123" http://localhost:8000/experiments
+curl -H "Authorization: Bearer <your-token>" http://localhost:8000/experiments
 ```
 
-Default tokens: `test-token-123`, `test-token-456`
+### Token Management
+
+API tokens are stored securely in the database with SHA256 hashing. The original token is only returned once at creation time.
+
+**Bootstrap Token**: On first startup, if no tokens exist, a bootstrap token is created:
+- Set `BOOTSTRAP_TOKEN` environment variable to specify the token
+- Or let the system auto-generate one (printed to console)
+
+**Token Caching**: Tokens are cached for 5 minutes to reduce database queries. Cache is invalidated immediately when tokens are deactivated or deleted.
+
+### Token Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/tokens` | Create a new API token |
+| GET | `/tokens` | List all tokens (without hashes) |
+| DELETE | `/tokens/{id}` | Delete a token |
+| POST | `/tokens/{id}/deactivate` | Deactivate a token |
+
+### Create a Token
+
+```bash
+curl -X POST http://localhost:8000/tokens \
+  -H "Authorization: Bearer <bootstrap-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Production Token"}'
+```
+
+Response includes the token value (only shown once):
+```json
+{
+  "id": 2,
+  "name": "Production Token",
+  "token": "abc123...",  // Save this! Never shown again
+  "is_active": true,
+  "created_at": "2024-01-01T00:00:00"
+}
+```
 
 ## API Endpoints
 
@@ -234,7 +273,7 @@ curl http://localhost:8000/flags/dark-mode/evaluate/user123 \
 
 ## Running Tests
 
-### Unit Tests (58 tests, ~5 seconds)
+### Unit Tests (68 tests, ~9 seconds)
 
 Tests use mock repositories - no database required:
 
@@ -243,10 +282,10 @@ Tests use mock repositories - no database required:
 docker compose --profile test run --rm test
 
 # Or locally with Python
-python3 -m pytest tests/test_api.py tests/test_cache.py -v
+python3 -m pytest tests/test_api.py tests/test_cache.py tests/test_token_cache.py -v
 ```
 
-### Integration Tests (16 tests)
+### Integration Tests (22 tests)
 
 Full end-to-end tests against PostgreSQL + live API server:
 
@@ -262,6 +301,8 @@ docker compose down -v
 - Authentication (missing/invalid/valid tokens)
 - Full experiment workflow (create -> assign -> events -> results)
 - Full feature flag workflow (CRUD, evaluation, overrides)
+- API token management (create, list, deactivate, delete)
+- Token caching behavior (cache hit/miss, TTL expiration, invalidation)
 - Edge cases and error handling
 - Concurrent access and idempotency
 
@@ -269,9 +310,9 @@ docker compose down -v
 
 ```
 ├── app/
-│   ├── main.py               # FastAPI application entry point
+│   ├── main.py               # FastAPI app entry point + bootstrap token
 │   ├── config.py             # Configuration settings
-│   ├── auth.py               # Authentication middleware
+│   ├── auth.py               # Token verification with caching
 │   ├── cache.py              # In-memory cache with TTL
 │   ├── database.py           # PostgreSQL connection with pooling
 │   ├── dependencies.py       # FastAPI dependency injection
@@ -282,14 +323,17 @@ docker compose down -v
 │   │   └── sqlalchemy/       # SQLAlchemy implementations
 │   │       ├── experiment_repo.py
 │   │       ├── event_repo.py
-│   │       └── feature_flag_repo.py
+│   │       ├── feature_flag_repo.py
+│   │       └── api_token_repo.py
 │   └── routers/
 │       ├── experiments.py    # Experiment endpoints
 │       ├── events.py         # Event endpoints
-│       └── feature_flags.py  # Feature flag endpoints
+│       ├── feature_flags.py  # Feature flag endpoints
+│       └── api_tokens.py     # Token management endpoints
 ├── tests/
 │   ├── test_api.py           # Unit tests (mock-based)
 │   ├── test_cache.py         # Cache unit tests
+│   ├── test_token_cache.py   # Token cache behavior tests
 │   ├── test_integration.py   # Integration tests
 │   └── mocks/                # Mock repository implementations
 │       ├── __init__.py
