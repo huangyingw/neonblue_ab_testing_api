@@ -321,6 +321,11 @@ class ApiTokenRepository(ABC):
         pass
 
     @abstractmethod
+    def get_by_id(self, token_id: int) -> Optional[ApiTokenEntity]:
+        """Get a token by its ID."""
+        pass
+
+    @abstractmethod
     def list_all(self) -> list[ApiTokenEntity]:
         """List all API tokens."""
         pass

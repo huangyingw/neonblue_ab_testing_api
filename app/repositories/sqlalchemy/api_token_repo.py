@@ -52,6 +52,11 @@ class SQLAlchemyApiTokenRepository(ApiTokenRepository):
         )
         return self._to_entity(token) if token else None
 
+    def get_by_id(self, token_id: int) -> Optional[ApiTokenEntity]:
+        """Get a token by its ID."""
+        token = self.db.query(ApiToken).filter(ApiToken.id == token_id).first()
+        return self._to_entity(token) if token else None
+
     def list_all(self) -> list[ApiTokenEntity]:
         """List all API tokens."""
         tokens = self.db.query(ApiToken).order_by(ApiToken.created_at.desc()).all()

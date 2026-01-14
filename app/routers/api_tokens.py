@@ -3,7 +3,7 @@
 import secrets
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.auth import verify_token, hash_token
+from app.auth import verify_token, hash_token, invalidate_token_cache
 from app.dependencies import get_api_token_repository
 from app.repositories.interfaces import ApiTokenRepository, ApiTokenInput, ApiTokenEntity
 from app.schemas import ApiTokenCreate, ApiTokenResponse, ApiTokenCreatedResponse
@@ -79,6 +79,17 @@ def delete_token(
             detail="Cannot delete the token currently being used for authentication",
         )
 
+    # Get token to retrieve hash for cache invalidation
+    token_entity = repo.get_by_id(token_id)
+    if not token_entity:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Token with id {token_id} not found",
+        )
+
+    # Invalidate cache before deletion
+    invalidate_token_cache(token_entity.token_hash)
+
     if not repo.delete(token_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -99,6 +110,17 @@ def deactivate_token(
             detail="Cannot deactivate the token currently being used for authentication",
         )
 
+    # Get token to retrieve hash for cache invalidation
+    token_entity = repo.get_by_id(token_id)
+    if not token_entity:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Token with id {token_id} not found",
+        )
+
+    # Invalidate cache before deactivation
+    invalidate_token_cache(token_entity.token_hash)
+
     if not repo.deactivate(token_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -106,14 +128,5 @@ def deactivate_token(
         )
 
     # Fetch updated entity
-    # Note: We need to get by id, but we only have get_by_hash
-    # For simplicity, return a minimal response
-    tokens = repo.list_all()
-    for t in tokens:
-        if t.id == token_id:
-            return _entity_to_response(t)
-
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Token with id {token_id} not found",
-    )
+    updated_token = repo.get_by_id(token_id)
+    return _entity_to_response(updated_token)

@@ -371,6 +371,10 @@ class MockApiTokenRepository(ApiTokenRepository):
             return self._tokens.get(token_id)
         return None
 
+    def get_by_id(self, token_id: int) -> Optional[ApiTokenEntity]:
+        """Get a token by its ID."""
+        return self._tokens.get(token_id)
+
     def list_all(self) -> list[ApiTokenEntity]:
         """List all API tokens."""
         return sorted(self._tokens.values(), key=lambda t: t.created_at, reverse=True)

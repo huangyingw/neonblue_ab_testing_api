@@ -8,16 +8,32 @@ from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.cache import cache
 from app.database import get_db
-from app.repositories.interfaces import ApiTokenRepository, ApiTokenEntity
+from app.repositories.interfaces import ApiTokenEntity
 from app.repositories.sqlalchemy import SQLAlchemyApiTokenRepository
 
 security = HTTPBearer()
+
+# Cache key template and TTL for token entities
+CACHE_KEY_TOKEN = "token:{token_hash}"
+TOKEN_CACHE_TTL = 300  # 5 minutes
 
 
 def hash_token(token: str) -> str:
     """Hash a token using SHA256."""
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def get_token_cache_key(token_hash: str) -> str:
+    """Generate cache key for a token hash."""
+    return CACHE_KEY_TOKEN.format(token_hash=token_hash)
+
+
+def invalidate_token_cache(token_hash: str) -> None:
+    """Invalidate cache for a specific token hash."""
+    cache_key = get_token_cache_key(token_hash)
+    cache.delete(cache_key)
 
 
 def _validate_token(token_entity: Optional[ApiTokenEntity]) -> None:
@@ -51,6 +67,9 @@ def verify_token(
     """
     Verify the Bearer token from the request.
 
+    Uses cache to avoid database queries on every request.
+    Cache is invalidated when token is deactivated or deleted.
+
     Args:
         credentials: The HTTP authorization credentials containing the token.
         db: Database session.
@@ -63,13 +82,23 @@ def verify_token(
     """
     token = credentials.credentials
     token_hash = hash_token(token)
+    cache_key = get_token_cache_key(token_hash)
 
-    repo = SQLAlchemyApiTokenRepository(db)
-    token_entity = repo.get_by_hash(token_hash)
+    # Try to get from cache first
+    token_entity: Optional[ApiTokenEntity] = cache.get(cache_key)
 
+    if token_entity is None:
+        # Cache miss - query database
+        repo = SQLAlchemyApiTokenRepository(db)
+        token_entity = repo.get_by_hash(token_hash)
+
+        if token_entity:
+            # Cache the token entity
+            cache.set(cache_key, token_entity, TOKEN_CACHE_TTL)
+            # Update last used timestamp (only on cache miss to reduce DB writes)
+            repo.update_last_used(token_entity.id)
+
+    # Always validate (expiration check is time-sensitive)
     _validate_token(token_entity)
-
-    # Update last used timestamp
-    repo.update_last_used(token_entity.id)
 
     return token_entity
