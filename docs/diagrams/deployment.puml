@@ -60,21 +60,18 @@ node "Docker Compose Environment" as DockerEnv {
     }
 
     node "Test Profile" as Test #LightPink {
-        node "db-test container" as TestDBContainer {
-            database "PostgreSQL 16\n(isolated)" as TestDB
-        }
-
         node "test container" as TestContainer {
             artifact "pytest" as Pytest
             artifact "pytest-cov" as PytestCov
+            artifact "Mock Repositories" as Mocks
         }
 
-        TestContainer --> TestDBContainer : "DATABASE_URL"
-
         note right of TestContainer
-          Unit tests run against
-          isolated test database
-          with coverage report
+          **Unit Tests (Isolated):**
+          - Uses Mock Repositories
+          - No real database connection
+          - Fast execution
+          - 97% code coverage
         end note
     }
 
