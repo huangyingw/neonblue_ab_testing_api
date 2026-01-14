@@ -202,3 +202,38 @@ class FeatureFlagOverrideCreate(BaseModel):
 
     user_id: str = Field(..., min_length=1, max_length=100)
     enabled: bool
+
+
+# --- API Token Schemas ---
+
+
+class ApiTokenCreate(BaseModel):
+    """Schema for creating an API token."""
+
+    name: str = Field(..., min_length=1, max_length=200, description="Description of token usage")
+    expires_at: Optional[datetime] = Field(None, description="Expiration time (None = never expires)")
+
+
+class ApiTokenResponse(BaseModel):
+    """Schema for API token response (without the actual token)."""
+
+    id: int
+    name: str
+    is_active: bool
+    created_at: datetime
+    expires_at: Optional[datetime]
+    last_used_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True
+
+
+class ApiTokenCreatedResponse(BaseModel):
+    """Schema for response when a new token is created (includes the actual token)."""
+
+    id: int
+    name: str
+    token: str  # Only returned once at creation time
+    is_active: bool
+    created_at: datetime
+    expires_at: Optional[datetime]

@@ -7,13 +7,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     app_name: str = "A/B Testing API"
-    database_url: str = "sqlite:///./ab_testing.db"
-
-    # Valid API tokens for authentication
-    api_tokens: list[str] = [
-        "test-token-123",
-        "test-token-456",
-    ]
+    database_url: str = "postgresql://abtest:abtest123@db:5432/ab_testing"
 
     class Config:
         env_file = ".env"

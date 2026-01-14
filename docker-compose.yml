@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   # PostgreSQL database
   db:
@@ -23,7 +21,6 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://abtest:abtest123@db:5432/ab_testing
-      - API_TOKENS=["test-token-123","test-token-456"]
     depends_on:
       db:
         condition: service_healthy
@@ -43,7 +40,6 @@ services:
       - ./app:/app/app
     environment:
       - DATABASE_URL=postgresql://abtest:abtest123@db:5432/ab_testing
-      - API_TOKENS=["test-token-123","test-token-456"]
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       db:
@@ -51,7 +47,7 @@ services:
     profiles:
       - dev
 
-  # Unit test runner (uses separate test database)
+  # Unit test runner (uses mock repositories, no database needed)
   test:
     build: .
     volumes:
@@ -59,8 +55,8 @@ services:
       - ./tests:/app/tests
     environment:
       - DATABASE_URL=postgresql://abtest:abtest123@db-test:5432/ab_testing_test
-      - API_TOKENS=["test-token-123","test-token-456"]
-    command: pytest tests/test_api.py tests/test_cache.py -v --cov=app --cov-report=term-missing --cov-report=html:coverage_report
+      - BOOTSTRAP_TOKEN=test-token-for-unit-tests
+    command: pytest tests/test_api.py tests/test_cache.py -v --cov=app --cov-report=term-missing
     depends_on:
       db-test:
         condition: service_healthy
@@ -88,7 +84,7 @@ services:
     build: .
     environment:
       - DATABASE_URL=postgresql://abtest:abtest123@db-test:5432/ab_testing_test
-      - API_TOKENS=["test-token-123","test-token-456"]
+      - BOOTSTRAP_TOKEN=test-token-123
     depends_on:
       db-test:
         condition: service_healthy
@@ -107,7 +103,7 @@ services:
       - ./tests:/app/tests
     environment:
       - API_BASE_URL=http://api-test:8000
-      - API_TOKENS=["test-token-123","test-token-456"]
+      - TEST_TOKEN=test-token-123
     command: pytest tests/test_integration.py -v --tb=short
     depends_on:
       api-test:

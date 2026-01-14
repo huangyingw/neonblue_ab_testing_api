@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from sqlalchemy import (
+    Boolean,
     Column,
     Integer,
     String,
@@ -15,6 +16,20 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+
+
+class ApiToken(Base):
+    """API Token model for authentication."""
+
+    __tablename__ = "api_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)  # Description of token usage
+    token_hash = Column(String, unique=True, nullable=False, index=True)  # SHA256 hash
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)  # None = never expires
+    last_used_at = Column(DateTime, nullable=True)
 
 
 class Experiment(Base):

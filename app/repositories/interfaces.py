@@ -88,6 +88,19 @@ class FeatureFlagOverrideEntity:
     created_at: datetime
 
 
+@dataclass
+class ApiTokenEntity:
+    """API Token entity for authentication."""
+
+    id: int
+    name: str
+    token_hash: str
+    is_active: bool
+    created_at: datetime
+    expires_at: Optional[datetime]
+    last_used_at: Optional[datetime]
+
+
 # =============================================================================
 # Input DTOs (for create/update operations)
 # =============================================================================
@@ -160,6 +173,14 @@ class EventFilter:
     end_date: Optional[datetime] = None
     limit: int = 100
     offset: int = 0
+
+
+@dataclass
+class ApiTokenInput:
+    """Input for creating an API token."""
+
+    name: str
+    expires_at: Optional[datetime] = None
 
 
 # =============================================================================
@@ -283,4 +304,38 @@ class FeatureFlagRepository(ABC):
     @abstractmethod
     def delete_user_override(self, flag_id: int, user_id: str) -> bool:
         """Delete a user-specific override. Returns True if deleted."""
+        pass
+
+
+class ApiTokenRepository(ABC):
+    """Abstract interface for API token data access."""
+
+    @abstractmethod
+    def create(self, data: ApiTokenInput, token_hash: str) -> ApiTokenEntity:
+        """Create a new API token."""
+        pass
+
+    @abstractmethod
+    def get_by_hash(self, token_hash: str) -> Optional[ApiTokenEntity]:
+        """Get a token by its hash."""
+        pass
+
+    @abstractmethod
+    def list_all(self) -> list[ApiTokenEntity]:
+        """List all API tokens."""
+        pass
+
+    @abstractmethod
+    def deactivate(self, token_id: int) -> bool:
+        """Deactivate a token. Returns True if successful."""
+        pass
+
+    @abstractmethod
+    def delete(self, token_id: int) -> bool:
+        """Delete a token. Returns True if deleted."""
+        pass
+
+    @abstractmethod
+    def update_last_used(self, token_id: int) -> None:
+        """Update the last_used_at timestamp."""
         pass

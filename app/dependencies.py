@@ -11,11 +11,13 @@ from app.repositories.interfaces import (
     ExperimentRepository,
     EventRepository,
     FeatureFlagRepository,
+    ApiTokenRepository,
 )
 from app.repositories.sqlalchemy import (
     SQLAlchemyExperimentRepository,
     SQLAlchemyEventRepository,
     SQLAlchemyFeatureFlagRepository,
+    SQLAlchemyApiTokenRepository,
 )
 
 
@@ -38,3 +40,10 @@ def get_feature_flag_repository(
 ) -> Generator[FeatureFlagRepository, None, None]:
     """Provide FeatureFlagRepository instance."""
     yield SQLAlchemyFeatureFlagRepository(db)
+
+
+def get_api_token_repository(
+    db: Session = Depends(get_db),
+) -> Generator[ApiTokenRepository, None, None]:
+    """Provide ApiTokenRepository instance."""
+    yield SQLAlchemyApiTokenRepository(db)

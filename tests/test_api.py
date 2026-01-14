@@ -5,6 +5,7 @@ No real database is touched during test execution.
 """
 
 import pytest
+from datetime import datetime
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -12,12 +13,16 @@ from app.dependencies import (
     get_experiment_repository,
     get_event_repository,
     get_feature_flag_repository,
+    get_api_token_repository,
 )
+from app.auth import verify_token
+from app.repositories.interfaces import ApiTokenEntity
 from app.cache import cache
 from tests.mocks import (
     MockExperimentRepository,
     MockEventRepository,
     MockFeatureFlagRepository,
+    MockApiTokenRepository,
 )
 
 
@@ -25,6 +30,18 @@ from tests.mocks import (
 mock_experiment_repo = MockExperimentRepository()
 mock_event_repo = MockEventRepository()
 mock_feature_flag_repo = MockFeatureFlagRepository()
+mock_api_token_repo = MockApiTokenRepository()
+
+# Create a mock token entity for authentication
+mock_token_entity = ApiTokenEntity(
+    id=1,
+    name="Test Token",
+    token_hash="mock_hash",
+    is_active=True,
+    created_at=datetime.utcnow(),
+    expires_at=None,
+    last_used_at=None,
+)
 
 
 def override_experiment_repository():
@@ -42,10 +59,22 @@ def override_feature_flag_repository():
     return mock_feature_flag_repo
 
 
+def override_api_token_repository():
+    """Provide mock api token repository."""
+    return mock_api_token_repo
+
+
+def override_verify_token():
+    """Provide mock token entity for authentication."""
+    return mock_token_entity
+
+
 # Override dependencies with mocks
 app.dependency_overrides[get_experiment_repository] = override_experiment_repository
 app.dependency_overrides[get_event_repository] = override_event_repository
 app.dependency_overrides[get_feature_flag_repository] = override_feature_flag_repository
+app.dependency_overrides[get_api_token_repository] = override_api_token_repository
+app.dependency_overrides[verify_token] = override_verify_token
 
 
 client = TestClient(app)
@@ -58,6 +87,7 @@ def reset_mocks():
     mock_experiment_repo.reset()
     mock_event_repo.reset()
     mock_feature_flag_repo.reset()
+    mock_api_token_repo.reset()
     cache.clear()
     yield
 
@@ -72,21 +102,14 @@ class TestHealthCheck:
 
 
 class TestAuthentication:
-    """Tests for authentication."""
+    """Tests for authentication.
 
-    def test_missing_token(self):
-        response = client.post("/experiments", json={})
-        assert response.status_code in [401, 403]
+    Note: Token validation is mocked in unit tests.
+    Real authentication tests are in test_integration.py.
+    """
 
-    def test_invalid_token(self):
-        response = client.post(
-            "/experiments",
-            json={},
-            headers={"Authorization": "Bearer invalid-token"},
-        )
-        assert response.status_code == 401
-
-    def test_valid_token(self):
+    def test_valid_token_creates_experiment(self):
+        """Test that authenticated requests work (with mocked auth)."""
         response = client.post(
             "/experiments",
             json={

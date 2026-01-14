@@ -12,7 +12,9 @@ import pytest
 
 # API base URL - use environment variable or default to localhost
 API_BASE_URL = os.getenv("API_BASE_URL", "http://api:8000")
-AUTH_HEADER = {"Authorization": "Bearer test-token-123"}
+# Token is set via BOOTSTRAP_TOKEN in docker-compose for the API server
+TEST_TOKEN = os.getenv("TEST_TOKEN", "test-token-123")
+AUTH_HEADER = {"Authorization": f"Bearer {TEST_TOKEN}"}
 
 
 @pytest.fixture(scope="module")
@@ -545,22 +547,85 @@ class TestResultsStatistics:
             assert "events_by_type" in variant
 
 
-class TestMultiTokenAuth:
-    """Integration tests for multiple token authentication."""
+class TestApiTokenManagement:
+    """Integration tests for API token management."""
 
-    def test_multiple_valid_tokens(self, client, wait_for_api):
-        """Test that both configured tokens work."""
-        # Test with first token
-        response1 = client.get(
+    def test_bootstrap_token_works(self, client, wait_for_api):
+        """Test that the bootstrap token from BOOTSTRAP_TOKEN env var works."""
+        response = client.get(
             "/experiments/1",
-            headers={"Authorization": "Bearer test-token-123"},
+            headers=AUTH_HEADER,
         )
         # 404 is expected (no experiment with id 1), but not 401
-        assert response1.status_code in [200, 404]
+        assert response.status_code in [200, 404]
 
-        # Test with second token
-        response2 = client.get(
-            "/experiments/1",
-            headers={"Authorization": "Bearer test-token-456"},
+    def test_list_tokens(self, client, wait_for_api):
+        """Test listing API tokens."""
+        response = client.get("/tokens", headers=AUTH_HEADER)
+        assert response.status_code == 200
+        tokens = response.json()
+        # Should have at least the bootstrap token
+        assert len(tokens) >= 1
+        assert any(t["name"] == "Bootstrap Token" for t in tokens)
+
+    def test_create_and_use_new_token(self, client, wait_for_api):
+        """Test creating a new token and using it."""
+        # Create a new token
+        create_response = client.post(
+            "/tokens",
+            headers=AUTH_HEADER,
+            json={"name": "Integration Test Token"},
         )
-        assert response2.status_code in [200, 404]
+        assert create_response.status_code == 201
+        token_data = create_response.json()
+        assert "token" in token_data  # Raw token returned only on creation
+        new_token = token_data["token"]
+        token_id = token_data["id"]
+
+        # Use the new token to make a request
+        response = client.get(
+            "/health",
+            headers={"Authorization": f"Bearer {new_token}"},
+        )
+        assert response.status_code == 200
+
+        # Delete the test token
+        delete_response = client.delete(
+            f"/tokens/{token_id}",
+            headers=AUTH_HEADER,
+        )
+        assert delete_response.status_code == 204
+
+    def test_deactivate_token(self, client, wait_for_api):
+        """Test deactivating a token."""
+        # Create a new token
+        create_response = client.post(
+            "/tokens",
+            headers=AUTH_HEADER,
+            json={"name": "Token to Deactivate"},
+        )
+        token_data = create_response.json()
+        new_token = token_data["token"]
+        token_id = token_data["id"]
+
+        # Deactivate the token
+        deactivate_response = client.post(
+            f"/tokens/{token_id}/deactivate",
+            headers=AUTH_HEADER,
+        )
+        assert deactivate_response.status_code == 200
+
+        # Try to use the deactivated token - should fail
+        response = client.get(
+            "/health",
+            headers={"Authorization": f"Bearer {new_token}"},
+        )
+        # Health doesn't need auth, use another endpoint
+        response = client.get(
+            "/experiments/1",
+            headers={"Authorization": f"Bearer {new_token}"},
+        )
+        assert response.status_code == 401
+
+        # Clean up
+        client.delete(f"/tokens/{token_id}", headers=AUTH_HEADER)

@@ -13,18 +13,21 @@ from app.repositories.interfaces import (
     ExperimentRepository,
     EventRepository,
     FeatureFlagRepository,
+    ApiTokenRepository,
     ExperimentEntity,
     VariantEntity,
     AssignmentEntity,
     EventEntity,
     FeatureFlagEntity,
     FeatureFlagOverrideEntity,
+    ApiTokenEntity,
     ExperimentInput,
     ExperimentUpdateInput,
     EventInput,
     EventFilter,
     FeatureFlagInput,
     FeatureFlagUpdateInput,
+    ApiTokenInput,
 )
 
 
@@ -329,3 +332,68 @@ class MockFeatureFlagRepository(FeatureFlagRepository):
             del self._overrides[key]
             return True
         return False
+
+
+class MockApiTokenRepository(ApiTokenRepository):
+    """In-memory mock implementation of ApiTokenRepository."""
+
+    def __init__(self):
+        self._tokens: dict[int, ApiTokenEntity] = {}
+        self._hash_index: dict[str, int] = {}  # token_hash -> token_id
+        self._next_id = 1
+
+    def reset(self):
+        """Reset all data. Call this between tests."""
+        self._tokens.clear()
+        self._hash_index.clear()
+        self._next_id = 1
+
+    def create(self, data: ApiTokenInput, token_hash: str) -> ApiTokenEntity:
+        """Create a new API token."""
+        token = ApiTokenEntity(
+            id=self._next_id,
+            name=data.name,
+            token_hash=token_hash,
+            is_active=True,
+            created_at=datetime.utcnow(),
+            expires_at=data.expires_at,
+            last_used_at=None,
+        )
+        self._tokens[token.id] = token
+        self._hash_index[token_hash] = token.id
+        self._next_id += 1
+        return token
+
+    def get_by_hash(self, token_hash: str) -> Optional[ApiTokenEntity]:
+        """Get a token by its hash."""
+        token_id = self._hash_index.get(token_hash)
+        if token_id:
+            return self._tokens.get(token_id)
+        return None
+
+    def list_all(self) -> list[ApiTokenEntity]:
+        """List all API tokens."""
+        return sorted(self._tokens.values(), key=lambda t: t.created_at, reverse=True)
+
+    def deactivate(self, token_id: int) -> bool:
+        """Deactivate a token."""
+        token = self._tokens.get(token_id)
+        if not token:
+            return False
+        token.is_active = False
+        return True
+
+    def delete(self, token_id: int) -> bool:
+        """Delete a token."""
+        token = self._tokens.get(token_id)
+        if not token:
+            return False
+        del self._hash_index[token.token_hash]
+        del self._tokens[token_id]
+        return True
+
+    def update_last_used(self, token_id: int) -> None:
+        """Update the last_used_at timestamp."""
+        token = self._tokens.get(token_id)
+        if token:
+            token.last_used_at = datetime.utcnow()
