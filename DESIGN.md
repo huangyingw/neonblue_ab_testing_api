@@ -74,6 +74,7 @@ Database-agnostic data structures (pure Python dataclasses):
 | `EventEntity` | User event/action |
 | `FeatureFlagEntity` | Feature flag configuration |
 | `FeatureFlagOverrideEntity` | Per-user flag override |
+| `ApiTokenEntity` | API authentication token |
 
 #### Repository Interfaces
 
@@ -82,6 +83,7 @@ Database-agnostic data structures (pure Python dataclasses):
 | `ExperimentRepository` | `create`, `get_by_id`, `update`, `get_variants`, `get_assignment`, `create_assignment`, `get_assignments_by_variant` |
 | `EventRepository` | `create`, `list`, `get_events_for_user_after` |
 | `FeatureFlagRepository` | `create`, `get_by_key`, `list_all`, `update`, `delete`, `get_user_override`, `set_user_override`, `delete_user_override` |
+| `ApiTokenRepository` | `create`, `get_by_hash`, `list_all`, `delete`, `deactivate`, `update_last_used` |
 
 #### Benefits
 
@@ -316,9 +318,10 @@ def reset_mocks():
 
 | Type | Count | Purpose |
 |------|-------|---------|
-| Unit tests | 58 | Component logic via mock repositories |
-| Integration tests | 16 | Full API flow against real server |
+| Unit tests | 68 | Component logic via mock repositories |
+| Integration tests | 22 | Full API flow against real PostgreSQL server |
 | Cache tests | 13 | Cache module in isolation |
+| Token cache tests | 10 | Token verification caching behavior |
 
 ---
 
@@ -353,6 +356,12 @@ def reset_mocks():
     - PostgreSQL database in containers
     - No local Python environment required
     - Integration tests run in containers
+11. **API Token Management**:
+    - Database-stored tokens with SHA256 hashing
+    - Bootstrap token for initial setup
+    - Token CRUD operations (create, list, deactivate, delete)
+    - Cache-first verification for high performance
+    - Automatic cache invalidation on token changes
 
 ---
 
@@ -398,15 +407,17 @@ The Repository pattern was chosen specifically for this project to demonstrate:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Unit Tests (58)          │  Fast, Isolated, No I/O        │
-│  - Mock repositories      │  Run in ~5 seconds             │
+│  Unit Tests (68)          │  Fast, Isolated, No I/O        │
+│  - Mock repositories      │  Run in ~9 seconds             │
 │  - Test business logic    │  Safe for CI/CD                │
+│  - Token cache tests      │  Verify cache behavior         │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│  Integration Tests (16)   │  Full Stack Validation         │
+│  Integration Tests (22)   │  Full Stack Validation         │
 │  - Real PostgreSQL        │  End-to-end workflows          │
-│  - Real HTTP requests     │  Catch integration issues      │
+│  - Real HTTP requests     │  Token management flows        │
+│  - Cache invalidation     │  Catch integration issues      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
