@@ -139,18 +139,110 @@ def get_experiment(
 
 ### Database Schema Design
 
-The schema follows normalized design principles:
+#### Entity-Relationship Diagram
 
 ```
-experiments (1) ─── (N) variants
-     │                    │
-     │                    │
-     └──── (N) assignments ────┘
-                   │
-                   │ (linked via user_id)
-                   │
-              events (separate table, not directly linked)
+┌─────────────┐       ┌─────────────┐       ┌─────────────┐
+│ experiments │       │   variants  │       │ assignments │
+├─────────────┤       ├─────────────┤       ├─────────────┤
+│ id (PK)     │──1:N──│ id (PK)     │──1:N──│ id (PK)     │
+│ name        │       │ experiment_id│       │ experiment_id│
+│ description │       │ name        │       │ variant_id  │
+│ status      │       │ traffic_%   │       │ user_id     │
+│ created_at  │       │ created_at  │       │ assigned_at │
+└─────────────┘       └─────────────┘       └─────────────┘
+                                                   │
+                                            (user_id link)
+                                                   │
+┌─────────────┐       ┌─────────────┐       ┌─────────────┐
+│   events    │       │feature_flags│       │  api_tokens │
+├─────────────┤       ├─────────────┤       ├─────────────┤
+│ id (PK)     │       │ id (PK)     │──1:N──│ id (PK)     │
+│ user_id     │       │ key (UNIQUE)│       │ name        │
+│ event_type  │       │ name        │       │ token_hash  │
+│ timestamp   │       │ enabled     │       │ is_active   │
+│ properties  │       │ rollout_%   │       │ created_at  │
+│ (JSONB)     │       │ created_at  │       │ expires_at  │
+└─────────────┘       └─────────────┘       └─────────────┘
+                            │
+                           1:N
+                            │
+                      ┌─────────────┐
+                      │ flag_overrides│
+                      ├─────────────┤
+                      │ id (PK)     │
+                      │ flag_id (FK)│
+                      │ user_id     │
+                      │ enabled     │
+                      └─────────────┘
 ```
+
+#### Normalization Level
+
+The schema follows **Third Normal Form (3NF)**:
+
+| Table | 1NF | 2NF | 3NF | Rationale |
+|-------|-----|-----|-----|-----------|
+| experiments | ✓ | ✓ | ✓ | Atomic columns, no repeating groups |
+| variants | ✓ | ✓ | ✓ | Depends only on experiment_id |
+| assignments | ✓ | ✓ | ✓ | Links user to variant in experiment |
+| events | ✓ | ✓ | ✓ | Independent entity, JSONB for flexibility |
+| feature_flags | ✓ | ✓ | ✓ | Self-contained flag configuration |
+| flag_overrides | ✓ | ✓ | ✓ | Depends only on flag_id |
+
+**Denormalization Decision**: `events.properties` uses JSONB for flexible metadata storage. This avoids schema changes for new event attributes while maintaining query capability.
+
+#### Index Strategy for Query Efficiency
+
+| Index | Type | Query Pattern | Performance Impact |
+|-------|------|---------------|-------------------|
+| `ix_event_user_timestamp` | Composite B-tree | `WHERE user_id = ? AND timestamp > ?` | O(log n) for user event lookups |
+| `ix_event_type` | B-tree | `WHERE event_type = ?` | Fast event filtering |
+| `ix_assignment_user_experiment` | Composite B-tree | `WHERE user_id = ? AND experiment_id = ?` | Idempotent assignment checks |
+| `ix_override_user` | B-tree | `WHERE user_id = ?` | Feature flag evaluation |
+| `token_hash` | Unique B-tree | `WHERE token_hash = ?` | O(1) token lookup |
+| `feature_flags.key` | Unique B-tree | `WHERE key = ?` | Flag lookup by key |
+
+#### Data Integrity Constraints
+
+| Constraint | Type | Purpose |
+|------------|------|---------|
+| `uq_experiment_user` | UNIQUE(experiment_id, user_id) | Ensures idempotent user assignments |
+| `uq_flag_user` | UNIQUE(flag_id, user_id) | Prevents duplicate flag overrides |
+| `experiments.id → variants.experiment_id` | FK CASCADE | Auto-delete variants with experiment |
+| `variants.id → assignments.variant_id` | FK | Referential integrity |
+| `feature_flags.id → overrides.flag_id` | FK CASCADE | Auto-delete overrides with flag |
+
+#### Query Efficiency Analysis
+
+**Most Frequent Queries:**
+
+1. **Assignment Lookup** (every API request per user)
+   ```sql
+   SELECT * FROM assignments
+   WHERE experiment_id = ? AND user_id = ?
+   ```
+   - Index: `ix_assignment_user_experiment`
+   - Complexity: O(log n)
+   - Cached: Yes (5 min TTL)
+
+2. **Event Recording** (high volume)
+   ```sql
+   INSERT INTO events (user_id, event_type, timestamp, properties)
+   VALUES (?, ?, ?, ?)
+   ```
+   - No index needed for INSERT
+   - Complexity: O(1) amortized
+
+3. **Results Aggregation** (less frequent, heavier)
+   ```sql
+   SELECT e.* FROM events e
+   JOIN assignments a ON e.user_id = a.user_id
+   WHERE a.experiment_id = ?
+     AND e.timestamp > a.assigned_at
+   ```
+   - Uses: `ix_event_user_timestamp`
+   - Optimization: Only counts events AFTER assignment
 
 **Key Design Decisions:**
 
@@ -158,13 +250,14 @@ experiments (1) ─── (N) variants
    - Recording events before a user is assigned to an experiment
    - The same event can be analyzed across multiple experiments
    - Simpler event tracking implementation
+   - Better write performance (no FK check on insert)
 
-2. **Unique constraint on (experiment_id, user_id)**: Ensures idempotent assignments at the database level.
+2. **Unique constraint on (experiment_id, user_id)**: Ensures idempotent assignments at the database level, not just application level.
 
-3. **Indexes on common query patterns**:
-   - `ix_event_user_timestamp`: For filtering events by user and time
-   - `ix_event_type`: For filtering by event type
-   - `ix_assignment_user_experiment`: For fast assignment lookups
+3. **JSONB for event properties**: PostgreSQL's JSONB provides:
+   - Flexible schema for varied event metadata
+   - Indexable with GIN indexes if needed
+   - Efficient storage with compression
 
 ### Assignment Algorithm
 
