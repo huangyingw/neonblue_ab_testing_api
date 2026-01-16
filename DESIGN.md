@@ -14,6 +14,31 @@
 | Architecture | Repository Pattern | Clean separation between API and data access layers |
 | Containerization | Docker Compose | Multi-profile setup for production, development, and testing environments |
 
+### Trade-offs Analysis
+
+Every design decision involves trade-offs. Here's an honest assessment:
+
+| Decision | Benefits | Trade-offs | Why We Accepted |
+|----------|----------|------------|-----------------|
+| **Repository Pattern** | Testability, flexibility, clean separation | More boilerplate code, indirect data access | Testing benefits outweigh complexity; critical for maintainable code |
+| **PostgreSQL over SQLite** | Production-ready, JSONB, concurrency | Requires container/setup, more complex | A/B testing needs concurrent writes; SQLite would bottleneck |
+| **In-memory cache** | Simple, fast, no dependencies | Not distributed, lost on restart | Acceptable for single-instance; Redis would add complexity |
+| **SHA256 token hashing** | Secure, irreversible | Cannot recover original token | Security is paramount; tokens can be regenerated |
+| **Weighted random assignment** | Simple, fair distribution | No deterministic reproducibility | Simplicity wins; deterministic hashing available if needed |
+| **Events separate from experiments** | Flexibility, simpler tracking | Requires user_id join for analysis | Allows cross-experiment analysis; trade-off is acceptable |
+| **Mock repositories for tests** | Fast, isolated, no database pollution | Mocks may diverge from real implementation | Integration tests catch divergence; speed is critical for CI/CD |
+| **Synchronous SQLAlchemy** | Simpler code, easier debugging | Lower concurrency than async | Sufficient for current scale; async migration path exists |
+
+### Alternative Approaches Considered
+
+| Approach | Why Not Chosen |
+|----------|----------------|
+| **Django** | Heavier, less control over async, slower startup |
+| **MongoDB** | Overkill for structured experiment data; PostgreSQL JSONB sufficient |
+| **Redis for primary storage** | Persistence concerns; PostgreSQL more reliable for critical data |
+| **Deterministic hashing for assignment** | Weighted random simpler; deterministic available in feature flags |
+| **GraphQL** | REST sufficient; OpenAPI auto-docs more valuable for this use case |
+
 ### Repository Pattern Architecture
 
 The application uses the Repository pattern to abstract data access, providing a clean separation between the API layer and database implementation.
