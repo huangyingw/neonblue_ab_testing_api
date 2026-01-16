@@ -166,6 +166,103 @@ experiments (1) ─── (N) variants
    - `ix_event_type`: For filtering by event type
    - `ix_assignment_user_experiment`: For fast assignment lookups
 
+## Edge Cases and Constraints Handling
+
+This section documents how the API handles edge cases, invalid inputs, and system constraints.
+
+### Input Validation
+
+| Constraint | Implementation | HTTP Status |
+|------------|---------------|-------------|
+| Traffic percentages must sum to 100% | Pydantic validator in `ExperimentCreate` | 422 Unprocessable Entity |
+| Variant names non-empty, max 100 chars | `Field(min_length=1, max_length=100)` | 422 |
+| Rollout percentage 0-100 | `Field(ge=0, le=100)` | 422 |
+| Feature flag key format | Regex pattern `^[a-z0-9_-]+$` | 422 |
+| Status values whitelist | Custom validator (draft/running/stopped/completed) | 422 |
+
+### Resource Not Found
+
+| Scenario | Response |
+|----------|----------|
+| Get experiment with invalid ID | 404 Not Found |
+| Assign user to non-existent experiment | 404 Not Found |
+| Get results for non-existent experiment | 404 Not Found |
+| Get/update/delete non-existent feature flag | 404 Not Found |
+| Deactivate/delete non-existent token | 404 Not Found |
+
+### Conflict Handling
+
+| Scenario | Response |
+|----------|----------|
+| Create feature flag with duplicate key | 409 Conflict |
+| Database unique constraint violation | Caught and returns appropriate error |
+
+### Business Logic Constraints
+
+| Constraint | Implementation |
+|------------|---------------|
+| Experiment must have variants for assignment | 400 Bad Request if no variants |
+| Token must be active for authentication | 401 Unauthorized if inactive |
+| Token expiration check | 401 if expired |
+| Only count events after assignment timestamp | Filtered in `get_events_for_user_after()` |
+
+### Idempotency
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Assignment Idempotency                   │
+├─────────────────────────────────────────────────────────────┤
+│  1. Check cache for existing assignment                     │
+│  2. If not cached, check database                           │
+│  3. If exists in DB, return existing (idempotent)           │
+│  4. If not exists, create new assignment                    │
+│  5. Database UNIQUE(experiment_id, user_id) prevents races  │
+│  6. Cache result for future requests                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Database constraint ensures idempotency:**
+```sql
+UNIQUE CONSTRAINT "uq_experiment_user" ON (experiment_id, user_id)
+```
+
+### Concurrent Access
+
+| Concern | Solution |
+|---------|----------|
+| Race condition on assignment | Database unique constraint |
+| Cache thread safety | `threading.Lock` in cache module |
+| Token verification races | Cache-first with atomic operations |
+
+### Empty/Null Handling
+
+| Field | Behavior |
+|-------|----------|
+| `description` (experiment/flag) | Optional, defaults to `None` |
+| `properties` (event) | Optional JSON, defaults to `None` |
+| `timestamp` (event) | Optional, defaults to `datetime.utcnow()` |
+| `expires_at` (token) | Optional, `None` = never expires |
+| Results with no data | Returns zero counts, no statistical significance |
+
+### Error Response Format
+
+All errors follow consistent JSON format:
+```json
+{
+  "detail": "Human-readable error message"
+}
+```
+
+### Test Coverage for Edge Cases
+
+| Test Class | Coverage |
+|------------|----------|
+| `TestEdgeCases` (integration) | experiment_not_found, flag_not_found, invalid_creation, duplicate |
+| Unit tests | `*_nonexistent_*`, `*_invalid_*`, `*_duplicate_*` patterns |
+| `TestConcurrency` | concurrent_assignments, idempotency verification |
+
+---
+
 ### Assignment Algorithm
 
 Traffic allocation uses weighted random selection:
