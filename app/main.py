@@ -2,22 +2,20 @@
 
 import os
 import secrets
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from app.config import settings
-from app.database import engine, Base, SessionLocal
+from app.database import init_db, get_session_local
 from app.routers import experiments, events, feature_flags, api_tokens
 from app.auth import hash_token
 from app.models import ApiToken
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
-
 
 def _bootstrap_token():
     """Create initial token if none exists."""
-    db = SessionLocal()
+    db = get_session_local()()
     try:
         token_count = db.query(ApiToken).count()
         if token_count == 0:
@@ -43,7 +41,15 @@ def _bootstrap_token():
         db.close()
 
 
-_bootstrap_token()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler for startup and shutdown events."""
+    # Startup: Initialize database
+    init_db()
+    _bootstrap_token()
+    yield
+    # Shutdown: cleanup if needed
+
 
 app = FastAPI(
     title=settings.app_name,
@@ -51,6 +57,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Include routers

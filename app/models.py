@@ -133,3 +133,22 @@ class FeatureFlagOverride(Base):
         UniqueConstraint("feature_flag_id", "user_id", name="uq_flag_user"),
         Index("ix_override_user", "user_id"),
     )
+
+
+class FeatureFlagRolloutAssignment(Base):
+    """Rollout assignment for feature flags - stores user's rollout decision persistently."""
+
+    __tablename__ = "feature_flag_rollout_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    feature_flag_id = Column(Integer, ForeignKey("feature_flags.id"), nullable=False)
+    user_id = Column(String, nullable=False)
+    enabled = Column(Boolean, nullable=False)  # True=in rollout, False=not in rollout
+    assigned_at = Column(DateTime, default=datetime.utcnow)
+
+    feature_flag = relationship("FeatureFlag")
+
+    __table_args__ = (
+        UniqueConstraint("feature_flag_id", "user_id", name="uq_rollout_flag_user"),
+        Index("ix_rollout_user", "user_id"),
+    )

@@ -89,6 +89,17 @@ class FeatureFlagOverrideEntity:
 
 
 @dataclass
+class FeatureFlagRolloutAssignmentEntity:
+    """Rollout assignment for feature flags - stores user's rollout decision persistently."""
+
+    id: int
+    feature_flag_id: int
+    user_id: str
+    enabled: bool  # True=in rollout, False=not in rollout
+    assigned_at: datetime
+
+
+@dataclass
 class ApiTokenEntity:
     """API Token entity for authentication."""
 
@@ -304,6 +315,20 @@ class FeatureFlagRepository(ABC):
     @abstractmethod
     def delete_user_override(self, flag_id: int, user_id: str) -> bool:
         """Delete a user-specific override. Returns True if deleted."""
+        pass
+
+    @abstractmethod
+    def get_rollout_assignment(
+        self, flag_id: int, user_id: str
+    ) -> Optional[FeatureFlagRolloutAssignmentEntity]:
+        """Get existing rollout assignment for a user."""
+        pass
+
+    @abstractmethod
+    def create_rollout_assignment(
+        self, flag_id: int, user_id: str, enabled: bool
+    ) -> FeatureFlagRolloutAssignmentEntity:
+        """Create a new rollout assignment."""
         pass
 
 

@@ -5,13 +5,14 @@ from __future__ import annotations
 from typing import Optional
 from sqlalchemy.orm import Session
 
-from app.models import FeatureFlag, FeatureFlagOverride
+from app.models import FeatureFlag, FeatureFlagOverride, FeatureFlagRolloutAssignment
 from app.repositories.interfaces import (
     FeatureFlagRepository,
     FeatureFlagEntity,
     FeatureFlagInput,
     FeatureFlagUpdateInput,
     FeatureFlagOverrideEntity,
+    FeatureFlagRolloutAssignmentEntity,
 )
 
 
@@ -174,3 +175,45 @@ class SQLAlchemyFeatureFlagRepository(FeatureFlagRepository):
             self._session.commit()
             return True
         return False
+
+    def _to_rollout_assignment_entity(
+        self, model: FeatureFlagRolloutAssignment
+    ) -> FeatureFlagRolloutAssignmentEntity:
+        """Convert SQLAlchemy model to entity."""
+        return FeatureFlagRolloutAssignmentEntity(
+            id=model.id,
+            feature_flag_id=model.feature_flag_id,
+            user_id=model.user_id,
+            enabled=model.enabled,
+            assigned_at=model.assigned_at,
+        )
+
+    def get_rollout_assignment(
+        self, flag_id: int, user_id: str
+    ) -> Optional[FeatureFlagRolloutAssignmentEntity]:
+        """Get existing rollout assignment for a user."""
+        model = (
+            self._session.query(FeatureFlagRolloutAssignment)
+            .filter(
+                FeatureFlagRolloutAssignment.feature_flag_id == flag_id,
+                FeatureFlagRolloutAssignment.user_id == user_id,
+            )
+            .first()
+        )
+        if not model:
+            return None
+        return self._to_rollout_assignment_entity(model)
+
+    def create_rollout_assignment(
+        self, flag_id: int, user_id: str, enabled: bool
+    ) -> FeatureFlagRolloutAssignmentEntity:
+        """Create a new rollout assignment."""
+        model = FeatureFlagRolloutAssignment(
+            feature_flag_id=flag_id,
+            user_id=user_id,
+            enabled=enabled,
+        )
+        self._session.add(model)
+        self._session.commit()
+        self._session.refresh(model)
+        return self._to_rollout_assignment_entity(model)

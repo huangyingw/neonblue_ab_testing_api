@@ -1,6 +1,6 @@
 """Feature flag API endpoints."""
 
-import hashlib
+import random
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -160,8 +160,11 @@ def evaluate_feature_flag(
     Evaluation order:
     1. Check for user-specific override
     2. If globally enabled, return enabled
-    3. If rollout percentage > 0, use deterministic hash to decide
+    3. If rollout percentage > 0, use stored assignment (idempotent)
     4. Otherwise, return disabled
+
+    Results are cached for 60 seconds. Rollout assignments are stored
+    in database for consistency across servers.
     """
     # Try cache first
     cache_key = CACHE_KEY_FLAG_EVALUATION.format(key=key, user_id=user_id)
@@ -198,13 +201,20 @@ def evaluate_feature_flag(
         cache.set(cache_key, result, ttl=60)
         return result
 
-    # Check rollout percentage using deterministic hash
+    # Check rollout percentage using stored assignment (idempotent like experiments)
     if entity.rollout_percentage > 0:
-        hash_input = f"{key}:{user_id}"
-        hash_value = int(hashlib.md5(hash_input.encode()).hexdigest(), 16)
-        bucket = hash_value % 100
+        # Check for existing rollout assignment
+        rollout_assignment = repo.get_rollout_assignment(entity.id, user_id)
 
-        if bucket < entity.rollout_percentage:
+        if rollout_assignment:
+            # Use stored assignment
+            enabled = rollout_assignment.enabled
+        else:
+            # First time: make random decision and store it
+            enabled = random.uniform(0, 100) < entity.rollout_percentage
+            repo.create_rollout_assignment(entity.id, user_id, enabled)
+
+        if enabled:
             result = FeatureFlagEvaluation(
                 key=key,
                 enabled=True,

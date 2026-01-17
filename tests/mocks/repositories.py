@@ -20,6 +20,7 @@ from app.repositories.interfaces import (
     EventEntity,
     FeatureFlagEntity,
     FeatureFlagOverrideEntity,
+    FeatureFlagRolloutAssignmentEntity,
     ApiTokenEntity,
     ExperimentInput,
     ExperimentUpdateInput,
@@ -231,15 +232,19 @@ class MockFeatureFlagRepository(FeatureFlagRepository):
     def __init__(self):
         self._flags: dict[str, FeatureFlagEntity] = {}
         self._overrides: dict[tuple[int, str], FeatureFlagOverrideEntity] = {}
+        self._rollout_assignments: dict[tuple[int, str], FeatureFlagRolloutAssignmentEntity] = {}
         self._next_flag_id = 1
         self._next_override_id = 1
+        self._next_rollout_assignment_id = 1
 
     def reset(self):
         """Reset all data. Call this between tests."""
         self._flags.clear()
         self._overrides.clear()
+        self._rollout_assignments.clear()
         self._next_flag_id = 1
         self._next_override_id = 1
+        self._next_rollout_assignment_id = 1
 
     def create(self, data: FeatureFlagInput) -> FeatureFlagEntity:
         """Create a new feature flag."""
@@ -297,6 +302,13 @@ class MockFeatureFlagRepository(FeatureFlagRepository):
             ]
             for k in keys_to_delete:
                 del self._overrides[k]
+            # Delete associated rollout assignments
+            rollout_keys_to_delete = [
+                k for k in self._rollout_assignments.keys()
+                if k[0] == flag_id
+            ]
+            for k in rollout_keys_to_delete:
+                del self._rollout_assignments[k]
             del self._flags[key]
             return True
         return False
@@ -332,6 +344,28 @@ class MockFeatureFlagRepository(FeatureFlagRepository):
             del self._overrides[key]
             return True
         return False
+
+    def get_rollout_assignment(
+        self, flag_id: int, user_id: str
+    ) -> Optional[FeatureFlagRolloutAssignmentEntity]:
+        """Get existing rollout assignment for a user."""
+        return self._rollout_assignments.get((flag_id, user_id))
+
+    def create_rollout_assignment(
+        self, flag_id: int, user_id: str, enabled: bool
+    ) -> FeatureFlagRolloutAssignmentEntity:
+        """Create a new rollout assignment."""
+        key = (flag_id, user_id)
+        assignment = FeatureFlagRolloutAssignmentEntity(
+            id=self._next_rollout_assignment_id,
+            feature_flag_id=flag_id,
+            user_id=user_id,
+            enabled=enabled,
+            assigned_at=datetime.utcnow(),
+        )
+        self._rollout_assignments[key] = assignment
+        self._next_rollout_assignment_id += 1
+        return assignment
 
 
 class MockApiTokenRepository(ApiTokenRepository):
