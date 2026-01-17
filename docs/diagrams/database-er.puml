@@ -13,11 +13,13 @@
 ' - events: User actions/conversions with flexible JSON properties
 ' - feature_flags: Simple on/off toggles with rollout percentage
 ' - feature_flag_overrides: Per-user overrides for feature flags
+' - feature_flag_rollout_assignments: Persistent rollout decisions (idempotent)
 '
 ' Key constraints:
 ' - api_tokens: UNIQUE(token_hash) for secure token lookup
 ' - assignments: UNIQUE(experiment_id, user_id) ensures idempotency
 ' - feature_flag_overrides: UNIQUE(feature_flag_id, user_id) one override per user
+' - feature_flag_rollout_assignments: UNIQUE(feature_flag_id, user_id) ensures idempotency
 ' ============================================================================
 
 !define TABLE(x) entity x << (T,#FFAAAA) >>
@@ -109,10 +111,23 @@ TABLE(feature_flag_overrides) {
     UNIQUE(feature_flag_id, user_id)
 }
 
+TABLE(feature_flag_rollout_assignments) {
+    PK(id) : INTEGER
+    --
+    FK(feature_flag_id) : INTEGER
+    user_id : VARCHAR
+    enabled : BOOLEAN
+    assigned_at : DATETIME
+    ==
+    UNIQUE(feature_flag_id, user_id)
+    INDEX(user_id)
+}
+
 experiments ||--o{ variants : "has"
 experiments ||--o{ assignments : "has"
 variants ||--o{ assignments : "assigned to"
 feature_flags ||--o{ feature_flag_overrides : "has"
+feature_flags ||--o{ feature_flag_rollout_assignments : "has"
 
 note right of assignments
   Ensures idempotent
@@ -143,8 +158,16 @@ note right of feature_flags
   **Evaluation priority:**
   1. user_override
   2. enabled (global)
-  3. rollout_percentage
+  3. rollout (stored in
+     rollout_assignments)
   4. disabled (default)
+end note
+
+note left of feature_flag_rollout_assignments
+  **Idempotent rollout:**
+  Like experiment assignments,
+  stores user's rollout decision
+  persistently for consistency.
 end note
 
 note left of api_tokens

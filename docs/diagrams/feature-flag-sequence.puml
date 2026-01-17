@@ -10,13 +10,13 @@
 ' Evaluation priority (highest to lowest):
 ' 1. User Override: If user has a specific override, use it
 ' 2. Global Enable: If flag.enabled=true, return enabled
-' 3. Rollout Percentage: Use deterministic hash (MD5) to decide
+' 3. Rollout: Check stored assignment or create new one (idempotent)
 ' 4. Disabled: Default state if none of above match
 '
-' Deterministic hashing ensures:
+' Database storage ensures:
 ' - Same user always gets same result for same flag
-' - Consistent rollout without storing per-user state
-' - Hash formula: MD5(key:user_id) % 100 < rollout_percentage
+' - Consistent rollout across multiple servers
+' - Idempotent: random decision stored on first request
 '
 ' Caching: Results cached for 1 minute to reduce DB load
 ' ============================================================================
@@ -75,12 +75,29 @@ else Cache Miss
             Router --> Router : enabled = true\nreason = "global"
 
         else Rollout Percentage > 0
-            Router --> Router : Calculate hash\nMD5(key:user_id) % 100
+            Router -> Repo : get_rollout_assignment(flag_id, user_id)
+            Repo -> Impl : get_rollout_assignment()
+            Impl -> DB : SELECT rollout_assignment
+            DB --> Impl : Assignment | None
+            Impl --> Repo : RolloutAssignmentEntity | None
+            Repo --> Router : Assignment | None
 
-            alt Hash < rollout_percentage
-                Router --> Router : enabled = true\nreason = "rollout"
-            else
-                Router --> Router : enabled = false\nreason = "disabled"
+            alt Assignment Found
+                Router --> Router : enabled = assignment.enabled
+            else No Assignment (First Request)
+                Router --> Router : enabled = random() < rollout_percentage
+                Router -> Repo : create_rollout_assignment(flag_id, user_id, enabled)
+                Repo -> Impl : create_rollout_assignment()
+                Impl -> DB : INSERT rollout_assignment
+                DB --> Impl : Created
+                Impl --> Repo : RolloutAssignmentEntity
+                Repo --> Router : Assignment stored
+            end
+
+            alt Enabled
+                Router --> Router : reason = "rollout"
+            else Disabled
+                Router --> Router : reason = "disabled"
             end
 
         else
@@ -98,15 +115,22 @@ note right of Repo
   **Repository Pattern:**
   - get_by_key() returns Entity
   - get_user_override() for overrides
+  - get_rollout_assignment() for rollout
+  - create_rollout_assignment() stores decision
   - No SQLAlchemy in Router
 end note
 
 note left of Router
   **Evaluation Priority:**
-  1. User Override
-  2. Global Enable
-  3. Rollout Percentage
+  1. User Override (DB)
+  2. Global Enable (flag.enabled)
+  3. Rollout (stored in DB, idempotent)
   4. Disabled (default)
+
+  **Idempotency:**
+  Same as experiment assignments -
+  random decision stored on first request,
+  subsequent requests return stored value.
 end note
 
 @enduml
