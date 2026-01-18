@@ -108,7 +108,7 @@ class FeatureFlag(Base):
     key = Column(String, unique=True, nullable=False, index=True)
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
-    enabled = Column(Integer, default=0)  # 0=disabled, 1=enabled globally
+    enabled = Column(Boolean, default=False)  # Feature flag global enable state
     rollout_percentage = Column(Float, default=0)  # 0-100, for gradual rollout
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -124,7 +124,7 @@ class FeatureFlagOverride(Base):
     id = Column(Integer, primary_key=True, index=True)
     feature_flag_id = Column(Integer, ForeignKey("feature_flags.id"), nullable=False)
     user_id = Column(String, nullable=False)
-    enabled = Column(Integer, nullable=False)  # 0=disabled, 1=enabled
+    enabled = Column(Boolean, nullable=False)  # Override enable state
     created_at = Column(DateTime, default=datetime.utcnow)
 
     feature_flag = relationship("FeatureFlag", back_populates="user_overrides")

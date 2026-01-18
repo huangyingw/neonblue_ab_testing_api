@@ -29,7 +29,7 @@ class SQLAlchemyFeatureFlagRepository(FeatureFlagRepository):
             key=model.key,
             name=model.name,
             description=model.description,
-            enabled=bool(model.enabled),
+            enabled=model.enabled,
             rollout_percentage=model.rollout_percentage,
             created_at=model.created_at,
             updated_at=model.updated_at,
@@ -41,7 +41,7 @@ class SQLAlchemyFeatureFlagRepository(FeatureFlagRepository):
             id=model.id,
             feature_flag_id=model.feature_flag_id,
             user_id=model.user_id,
-            enabled=bool(model.enabled),
+            enabled=model.enabled,
             created_at=model.created_at,
         )
 
@@ -51,7 +51,7 @@ class SQLAlchemyFeatureFlagRepository(FeatureFlagRepository):
             key=data.key,
             name=data.name,
             description=data.description,
-            enabled=1 if data.enabled else 0,
+            enabled=data.enabled,
             rollout_percentage=data.rollout_percentage,
         )
         self._session.add(model)
@@ -97,7 +97,7 @@ class SQLAlchemyFeatureFlagRepository(FeatureFlagRepository):
         if data.description is not None:
             model.description = data.description
         if data.enabled is not None:
-            model.enabled = 1 if data.enabled else 0
+            model.enabled = data.enabled
         if data.rollout_percentage is not None:
             model.rollout_percentage = data.rollout_percentage
 
@@ -148,12 +148,12 @@ class SQLAlchemyFeatureFlagRepository(FeatureFlagRepository):
         )
 
         if existing:
-            existing.enabled = 1 if enabled else 0
+            existing.enabled = enabled
         else:
             model = FeatureFlagOverride(
                 feature_flag_id=flag_id,
                 user_id=user_id,
-                enabled=1 if enabled else 0,
+                enabled=enabled,
             )
             self._session.add(model)
 

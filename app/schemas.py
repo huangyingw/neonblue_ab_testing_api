@@ -204,6 +204,18 @@ class FeatureFlagOverrideCreate(BaseModel):
     enabled: bool
 
 
+class FeatureFlagOverrideResponse(BaseModel):
+    """Schema for feature flag override response."""
+
+    feature_flag_key: str
+    user_id: str
+    enabled: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # --- API Token Schemas ---
 
 

@@ -76,6 +76,16 @@ def create_experiment(
     return _to_experiment_response(entity)
 
 
+@router.get("", response_model=list[ExperimentResponse])
+def list_experiments(
+    repo: ExperimentRepository = Depends(get_experiment_repository),
+    _: str = Depends(verify_token),
+):
+    """List all experiments."""
+    entities = repo.list_all()
+    return [_to_experiment_response(e) for e in entities]
+
+
 @router.get("/{experiment_id}", response_model=ExperimentResponse)
 def get_experiment(
     experiment_id: int,

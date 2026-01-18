@@ -88,6 +88,15 @@ class SQLAlchemyExperimentRepository(ExperimentRepository):
             return None
         return self._to_experiment_entity(model)
 
+    def list_all(self) -> list[ExperimentEntity]:
+        """List all experiments."""
+        models = (
+            self._session.query(Experiment)
+            .order_by(Experiment.created_at.desc())
+            .all()
+        )
+        return [self._to_experiment_entity(m) for m in models]
+
     def update(
         self, experiment_id: int, data: ExperimentUpdateInput
     ) -> Optional[ExperimentEntity]:

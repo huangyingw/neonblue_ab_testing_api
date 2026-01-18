@@ -213,6 +213,11 @@ class ExperimentRepository(ABC):
         pass
 
     @abstractmethod
+    def list_all(self) -> list[ExperimentEntity]:
+        """List all experiments."""
+        pass
+
+    @abstractmethod
     def update(
         self, experiment_id: int, data: ExperimentUpdateInput
     ) -> Optional[ExperimentEntity]:

@@ -17,8 +17,15 @@ from app.schemas import (
     FeatureFlagResponse,
     FeatureFlagEvaluation,
     FeatureFlagOverrideCreate,
+    FeatureFlagOverrideResponse,
 )
-from app.cache import cache, CACHE_KEY_FEATURE_FLAG, CACHE_KEY_FLAG_EVALUATION
+from app.cache import (
+    cache,
+    CACHE_KEY_FEATURE_FLAG,
+    CACHE_KEY_FLAG_EVALUATION,
+    get_flag_cache_pattern,
+    get_flag_eval_cache_pattern,
+)
 
 router = APIRouter(prefix="/flags", tags=["feature-flags"])
 
@@ -122,8 +129,8 @@ def update_feature_flag(
         )
 
     # Invalidate cache
-    cache.invalidate_pattern(f"feature_flag:{key}")
-    cache.invalidate_pattern(f"flag_eval:{key}:")
+    cache.invalidate_pattern(get_flag_cache_pattern(key))
+    cache.invalidate_pattern(get_flag_eval_cache_pattern(key))
 
     return _to_flag_response(entity)
 
@@ -143,8 +150,8 @@ def delete_feature_flag(
         )
 
     # Invalidate cache
-    cache.invalidate_pattern(f"feature_flag:{key}")
-    cache.invalidate_pattern(f"flag_eval:{key}:")
+    cache.invalidate_pattern(get_flag_cache_pattern(key))
+    cache.invalidate_pattern(get_flag_eval_cache_pattern(key))
 
 
 @router.get("/{key}/evaluate/{user_id}", response_model=FeatureFlagEvaluation)
@@ -233,7 +240,7 @@ def evaluate_feature_flag(
     return result
 
 
-@router.post("/{key}/overrides", status_code=status.HTTP_201_CREATED)
+@router.post("/{key}/overrides", response_model=FeatureFlagOverrideResponse, status_code=status.HTTP_201_CREATED)
 def create_user_override(
     key: str,
     override: FeatureFlagOverrideCreate,
@@ -253,7 +260,14 @@ def create_user_override(
     # Invalidate cache for this evaluation
     cache.delete(CACHE_KEY_FLAG_EVALUATION.format(key=key, user_id=override.user_id))
 
-    return {"message": f"Override set for user '{override.user_id}' on flag '{key}'"}
+    # Get the created/updated override to return
+    override_entity = repo.get_user_override(entity.id, override.user_id)
+    return FeatureFlagOverrideResponse(
+        feature_flag_key=key,
+        user_id=override_entity.user_id,
+        enabled=override_entity.enabled,
+        created_at=override_entity.created_at,
+    )
 
 
 @router.delete("/{key}/overrides/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -104,6 +104,16 @@ CACHE_KEY_FEATURE_FLAG = "feature_flag:{key}"
 CACHE_KEY_FLAG_EVALUATION = "flag_eval:{key}:{user_id}"
 
 
+def get_flag_cache_pattern(key: str) -> str:
+    """Get cache invalidation pattern for a feature flag."""
+    return f"feature_flag:{key}"
+
+
+def get_flag_eval_cache_pattern(key: str) -> str:
+    """Get cache invalidation pattern for all evaluations of a feature flag."""
+    return f"flag_eval:{key}:"
+
+
 def cached(key_template: str, ttl: int = 300):
     """
     Decorator for caching function results.

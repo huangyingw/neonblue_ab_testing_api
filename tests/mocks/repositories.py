@@ -94,6 +94,18 @@ class MockExperimentRepository(ExperimentRepository):
             ]
         return experiment
 
+    def list_all(self) -> list[ExperimentEntity]:
+        """List all experiments."""
+        experiments = []
+        for exp in sorted(self._experiments.values(), key=lambda e: e.created_at, reverse=True):
+            # Attach variants to each experiment
+            exp.variants = [
+                v for v in self._variants.values()
+                if v.experiment_id == exp.id
+            ]
+            experiments.append(exp)
+        return experiments
+
     def update(
         self, experiment_id: int, data: ExperimentUpdateInput
     ) -> Optional[ExperimentEntity]:
