@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert
 
 from app.models import FeatureFlag, FeatureFlagOverride, FeatureFlagRolloutAssignment
 from app.repositories.interfaces import (
@@ -208,26 +208,25 @@ class SQLAlchemyFeatureFlagRepository(FeatureFlagRepository):
     def create_rollout_assignment(
         self, flag_id: int, user_id: str, enabled: bool
     ) -> FeatureFlagRolloutAssignmentEntity:
-        """Create a new rollout assignment.
+        """Create a new rollout assignment using INSERT ... ON CONFLICT.
 
-        Handles race conditions: if another request already created an assignment
-        for this user/flag, returns the existing assignment instead.
+        Uses PostgreSQL UPSERT to atomically handle concurrent requests.
+        If assignment already exists, the INSERT is silently ignored.
+        Returns the assignment (newly created or existing).
         """
-        model = FeatureFlagRolloutAssignment(
+        stmt = insert(FeatureFlagRolloutAssignment).values(
             feature_flag_id=flag_id,
             user_id=user_id,
             enabled=enabled,
+        ).on_conflict_do_nothing(
+            index_elements=["feature_flag_id", "user_id"]
         )
-        self._session.add(model)
-        try:
-            self._session.commit()
-            self._session.refresh(model)
-            return self._to_rollout_assignment_entity(model)
-        except IntegrityError:
-            # Race condition: another request already created the assignment
-            self._session.rollback()
-            existing = self.get_rollout_assignment(flag_id, user_id)
-            if existing:
-                return existing
-            # Should not happen, but re-raise if we can't find it
-            raise
+        self._session.execute(stmt)
+        self._session.commit()
+
+        # Return the assignment (either newly created or existing)
+        existing = self.get_rollout_assignment(flag_id, user_id)
+        if existing:
+            return existing
+        # Should not happen with proper constraints
+        raise RuntimeError("Rollout assignment not found after insert")

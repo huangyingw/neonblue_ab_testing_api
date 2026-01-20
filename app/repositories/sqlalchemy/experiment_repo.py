@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert
 
 from app.models import Experiment, Variant, Assignment
 from app.repositories.interfaces import (
@@ -150,29 +150,28 @@ class SQLAlchemyExperimentRepository(ExperimentRepository):
     def create_assignment(
         self, experiment_id: int, variant_id: int, user_id: str
     ) -> AssignmentEntity:
-        """Create a new assignment.
+        """Create a new assignment using INSERT ... ON CONFLICT.
 
-        Handles race conditions: if another request already created an assignment
-        for this user/experiment, returns the existing assignment instead.
+        Uses PostgreSQL UPSERT to atomically handle concurrent requests.
+        If assignment already exists, the INSERT is silently ignored.
+        Returns the assignment (newly created or existing).
         """
-        model = Assignment(
+        stmt = insert(Assignment).values(
             experiment_id=experiment_id,
             variant_id=variant_id,
             user_id=user_id,
+        ).on_conflict_do_nothing(
+            index_elements=["experiment_id", "user_id"]
         )
-        self._session.add(model)
-        try:
-            self._session.commit()
-            self._session.refresh(model)
-            return self._to_assignment_entity(model)
-        except IntegrityError:
-            # Race condition: another request already created the assignment
-            self._session.rollback()
-            existing = self.get_assignment(experiment_id, user_id)
-            if existing:
-                return existing
-            # Should not happen, but re-raise if we can't find it
-            raise
+        self._session.execute(stmt)
+        self._session.commit()
+
+        # Return the assignment (either newly created or existing)
+        existing = self.get_assignment(experiment_id, user_id)
+        if existing:
+            return existing
+        # Should not happen with proper constraints
+        raise RuntimeError("Assignment not found after insert")
 
     def get_assignments_by_variant(self, variant_id: int) -> list[AssignmentEntity]:
         """Get all assignments for a variant."""

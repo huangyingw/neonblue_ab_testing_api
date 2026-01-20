@@ -86,7 +86,7 @@
 ### Data Modeling
 
 The schema follows **Third Normal Form (3NF)** with strategic denormalization:
-- 7 tables: experiments, variants, assignments, events, feature_flags, flag_overrides, api_tokens
+- 8 tables: experiments, variants, assignments, events, feature_flags, flag_overrides, flag_rollout_assignments, api_tokens
 - Composite indexes for frequent query patterns
 - JSONB for flexible event metadata
 - Unique constraints for idempotent operations
@@ -116,7 +116,7 @@ Tests are **completely isolated** from any real environment:
 
 ### Feature Flags
 - Global enable/disable
-- Percentage-based rollout with database-stored assignments (idempotent)
+- Percentage-based rollout with database-persisted assignments (idempotent)
 - Per-user overrides
 - Cached evaluation for performance
 

@@ -114,6 +114,7 @@ class FeatureFlag(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user_overrides = relationship("FeatureFlagOverride", back_populates="feature_flag", cascade="all, delete-orphan")
+    rollout_assignments = relationship("FeatureFlagRolloutAssignment", back_populates="feature_flag", cascade="all, delete-orphan")
 
 
 class FeatureFlagOverride(Base):
@@ -146,7 +147,7 @@ class FeatureFlagRolloutAssignment(Base):
     enabled = Column(Boolean, nullable=False)  # True=in rollout, False=not in rollout
     assigned_at = Column(DateTime, default=datetime.utcnow)
 
-    feature_flag = relationship("FeatureFlag")
+    feature_flag = relationship("FeatureFlag", back_populates="rollout_assignments")
 
     __table_args__ = (
         UniqueConstraint("feature_flag_id", "user_id", name="uq_rollout_flag_user"),

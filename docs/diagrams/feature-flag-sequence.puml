@@ -17,6 +17,7 @@
 ' - Same user always gets same result for same flag
 ' - Consistent rollout across multiple servers
 ' - Idempotent: random decision stored on first request
+' - Atomic UPSERT: Uses INSERT ... ON CONFLICT DO NOTHING for concurrent safety
 '
 ' Caching: Results cached for 1 minute to reduce DB load
 ' ============================================================================
@@ -88,10 +89,12 @@ else Cache Miss
                 Router --> Router : enabled = random() < rollout_percentage
                 Router -> Repo : create_rollout_assignment(flag_id, user_id, enabled)
                 Repo -> Impl : create_rollout_assignment()
-                Impl -> DB : INSERT rollout_assignment
-                DB --> Impl : Created
+                Impl -> DB : INSERT ... ON CONFLICT DO NOTHING
+                DB --> Impl : OK (inserted or ignored)
+                Impl -> DB : SELECT rollout_assignment
+                DB --> Impl : RolloutAssignmentEntity
                 Impl --> Repo : RolloutAssignmentEntity
-                Repo --> Router : Assignment stored
+                Repo --> Router : Assignment (new or existing)
             end
 
             alt Enabled
@@ -127,10 +130,10 @@ note left of Router
   3. Rollout (stored in DB, idempotent)
   4. Disabled (default)
 
-  **Idempotency:**
-  Same as experiment assignments -
-  random decision stored on first request,
-  subsequent requests return stored value.
+  **Concurrency Safety:**
+  Uses INSERT ON CONFLICT DO NOTHING
+  to atomically handle concurrent requests.
+  No race conditions possible.
 end note
 
 @enduml

@@ -9,13 +9,15 @@
 ' - Idempotency: Same user always gets the same variant (via DB unique constraint)
 ' - Caching: Subsequent requests are served from cache (TTL: 5 minutes)
 ' - Weighted random: Variants selected based on traffic_percentage
+' - Atomic UPSERT: Uses INSERT ... ON CONFLICT DO NOTHING for concurrent safety
 '
 ' Endpoint: GET /experiments/{id}/assignment/{user_id}
 '
 ' First request flow:
 ' 1. Check cache (miss) -> Query existing assignment (not found)
-' 2. Get variants -> Weighted random selection -> Create assignment
-' 3. Store in cache -> Return response
+' 2. Get variants -> Weighted random selection
+' 3. INSERT ON CONFLICT DO NOTHING (atomic, no race condition)
+' 4. Query to get result -> Store in cache -> Return response
 '
 ' Subsequent requests: Cache hit -> Return immediately (idempotent)
 ' ============================================================================
@@ -73,8 +75,10 @@ Router -> Router : Calculate weighted\nrandom selection
 
 Router -> Repo : create_assignment(experiment_id, variant_id, user_id)
 Repo -> Impl : create_assignment()
-Impl -> DB : INSERT assignment
-DB --> Impl : Created
+Impl -> DB : INSERT ... ON CONFLICT DO NOTHING
+DB --> Impl : OK (inserted or ignored)
+Impl -> DB : SELECT assignment
+DB --> Impl : AssignmentEntity
 Impl --> Repo : AssignmentEntity
 Repo --> Router : AssignmentEntity
 

@@ -143,14 +143,16 @@ def get_experiment(
                             │
                            1:N
                             │
-                      ┌─────────────┐
-                      │ flag_overrides│
-                      ├─────────────┤
-                      │ id (PK)     │
-                      │ flag_id (FK)│
-                      │ user_id     │
-                      │ enabled     │
-                      └─────────────┘
+                      ┌─────────────┐       ┌─────────────┐
+                      │ flag_overrides│       │flag_rollout_│
+                      ├─────────────┤       │ assignments │
+                      │ id (PK)     │       ├─────────────┤
+                      │ flag_id (FK)│       │ id (PK)     │
+                      │ user_id     │       │ flag_id (FK)│
+                      │ enabled     │       │ user_id     │
+                      └─────────────┘       │ enabled     │
+                                            │ assigned_at │
+                                            └─────────────┘
 ```
 
 ### Normalization Level
@@ -165,6 +167,7 @@ The schema follows **Third Normal Form (3NF)**:
 | events | ✓ | ✓ | ✓ | Independent entity, JSONB for flexibility |
 | feature_flags | ✓ | ✓ | ✓ | Self-contained flag configuration |
 | flag_overrides | ✓ | ✓ | ✓ | Depends only on flag_id |
+| flag_rollout_assignments | ✓ | ✓ | ✓ | Persists rollout decisions per user |
 
 **Denormalization Decision**: `events.properties` uses JSONB for flexible metadata storage. This avoids schema changes for new event attributes while maintaining query capability.
 
@@ -176,6 +179,7 @@ The schema follows **Third Normal Form (3NF)**:
 | `ix_event_type` | B-tree | `WHERE event_type = ?` | Fast event filtering |
 | `ix_assignment_user_experiment` | Composite B-tree | `WHERE user_id = ? AND experiment_id = ?` | Idempotent assignment checks |
 | `ix_override_user` | B-tree | `WHERE user_id = ?` | Feature flag evaluation |
+| `ix_rollout_user` | B-tree | `WHERE user_id = ?` | Rollout assignment lookup |
 | `token_hash` | Unique B-tree | `WHERE token_hash = ?` | O(1) token lookup |
 | `feature_flags.key` | Unique B-tree | `WHERE key = ?` | Flag lookup by key |
 
@@ -185,9 +189,11 @@ The schema follows **Third Normal Form (3NF)**:
 |------------|------|---------|
 | `uq_experiment_user` | UNIQUE(experiment_id, user_id) | Ensures idempotent user assignments |
 | `uq_flag_user` | UNIQUE(flag_id, user_id) | Prevents duplicate flag overrides |
+| `uq_rollout_flag_user` | UNIQUE(flag_id, user_id) | Ensures idempotent rollout assignments |
 | `experiments.id → variants.experiment_id` | FK CASCADE | Auto-delete variants with experiment |
 | `variants.id → assignments.variant_id` | FK | Referential integrity |
 | `feature_flags.id → overrides.flag_id` | FK CASCADE | Auto-delete overrides with flag |
+| `feature_flags.id → rollout_assignments.flag_id` | FK CASCADE | Auto-delete rollout assignments with flag |
 
 ### Query Efficiency Analysis
 
