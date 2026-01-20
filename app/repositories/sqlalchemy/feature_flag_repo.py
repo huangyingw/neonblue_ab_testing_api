@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.models import FeatureFlag, FeatureFlagOverride, FeatureFlagRolloutAssignment
 from app.repositories.interfaces import (
@@ -207,13 +208,26 @@ class SQLAlchemyFeatureFlagRepository(FeatureFlagRepository):
     def create_rollout_assignment(
         self, flag_id: int, user_id: str, enabled: bool
     ) -> FeatureFlagRolloutAssignmentEntity:
-        """Create a new rollout assignment."""
+        """Create a new rollout assignment.
+
+        Handles race conditions: if another request already created an assignment
+        for this user/flag, returns the existing assignment instead.
+        """
         model = FeatureFlagRolloutAssignment(
             feature_flag_id=flag_id,
             user_id=user_id,
             enabled=enabled,
         )
         self._session.add(model)
-        self._session.commit()
-        self._session.refresh(model)
-        return self._to_rollout_assignment_entity(model)
+        try:
+            self._session.commit()
+            self._session.refresh(model)
+            return self._to_rollout_assignment_entity(model)
+        except IntegrityError:
+            # Race condition: another request already created the assignment
+            self._session.rollback()
+            existing = self.get_rollout_assignment(flag_id, user_id)
+            if existing:
+                return existing
+            # Should not happen, but re-raise if we can't find it
+            raise

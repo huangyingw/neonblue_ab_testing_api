@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.models import Experiment, Variant, Assignment
 from app.repositories.interfaces import (
@@ -149,17 +150,29 @@ class SQLAlchemyExperimentRepository(ExperimentRepository):
     def create_assignment(
         self, experiment_id: int, variant_id: int, user_id: str
     ) -> AssignmentEntity:
-        """Create a new assignment."""
+        """Create a new assignment.
+
+        Handles race conditions: if another request already created an assignment
+        for this user/experiment, returns the existing assignment instead.
+        """
         model = Assignment(
             experiment_id=experiment_id,
             variant_id=variant_id,
             user_id=user_id,
         )
         self._session.add(model)
-        self._session.commit()
-        self._session.refresh(model)
-
-        return self._to_assignment_entity(model)
+        try:
+            self._session.commit()
+            self._session.refresh(model)
+            return self._to_assignment_entity(model)
+        except IntegrityError:
+            # Race condition: another request already created the assignment
+            self._session.rollback()
+            existing = self.get_assignment(experiment_id, user_id)
+            if existing:
+                return existing
+            # Should not happen, but re-raise if we can't find it
+            raise
 
     def get_assignments_by_variant(self, variant_id: int) -> list[AssignmentEntity]:
         """Get all assignments for a variant."""

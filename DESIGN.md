@@ -116,7 +116,7 @@ Tests are **completely isolated** from any real environment:
 
 ### Feature Flags
 - Global enable/disable
-- Percentage-based rollout using deterministic hashing
+- Percentage-based rollout with database-stored assignments (idempotent)
 - Per-user overrides
 - Cached evaluation for performance
 
